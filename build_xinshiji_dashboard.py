@@ -62,7 +62,12 @@ def tier_label(value: float) -> str:
     return "5+"
 
 
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame, dict[int, str]]:
+def month_week_start(month: int, week: int) -> pd.Timestamp:
+    first = pd.Timestamp(2026, month, 1)
+    return first - pd.Timedelta(days=first.weekday()) + pd.Timedelta(weeks=week - 1)
+
+
+def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, str]]:
     df = pd.read_excel(SOURCE, sheet_name=0)
     df.columns = [str(c).strip() for c in df.columns]
     df["条码"] = pd.to_numeric(df["条码"], errors="coerce").fillna(0).astype("int64")
@@ -79,22 +84,29 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame, dict[int, str]]:
     for product in PRODUCTS:
         product["name"] = product_names.get(product["barcode"], product["short"])
 
-    daily = df[df["销售日期"].notna() & (df["销售日期"] >= START)].copy()
-    if daily.empty:
-        raise RuntimeError("没有找到 2026-07-27 之后的新世纪日销售数据。")
+    month_col = df.columns[1]
+    week_col = df.columns[2]
+    days_col = df.columns[3]
+    date_col = df.columns[4]
+    df["_month"] = df[month_col].astype(str).str.extract(r"(\d+)").astype(int)
+    df["_week"] = df[week_col].astype(str).str.extract(r"(\d+)").astype(int)
+    df["_actual_week_start"] = df.apply(lambda row: month_week_start(int(row["_month"]), int(row["_week"])), axis=1)
+    df[days_col] = pd.to_numeric(df[days_col], errors="coerce").fillna(0).astype(int)
 
-    historical = df[df["销售日期"].isna()].copy()
-    historical["当周天数"] = pd.to_numeric(historical["当周天数"], errors="coerce").fillna(0).astype(int)
-    historical = historical[historical["当周天数"].eq(7)].copy()
-    historical["_month"] = historical["月别"].astype(str).str.extract(r"(\d+)").astype(float)
-    historical["_week"] = historical["周别"].astype(str).str.extract(r"(\d+)").astype(float)
-    if historical.empty:
-        raise RuntimeError("没有找到 7 月 27 日前的完整周历史数据。")
-    latest_month = historical["_month"].max()
-    latest_month = historical[historical["_month"].eq(latest_month)]
+    daily = df[df[date_col].notna() & (df[date_col] >= START)].copy()
+    if daily.empty:
+        raise RuntimeError("No daily Xinshiji data found after 2026-07-27.")
+    daily["_actual_week_start"] = daily[date_col] - pd.to_timedelta(daily[date_col].dt.weekday, unit="D")
+
+    historical = df[df[date_col].isna()].copy()
+    complete_historical = historical[historical[days_col].eq(7)].copy()
+    if complete_historical.empty:
+        raise RuntimeError("No complete pre-period weekly Xinshiji data found.")
+    latest_month = complete_historical["_month"].max()
+    latest_month = complete_historical[complete_historical["_month"].eq(latest_month)]
     latest_week = latest_month["_week"].max()
     baseline = latest_month[latest_month["_week"].eq(latest_week)].copy()
-    return daily, baseline, product_names
+    return df, daily, baseline, product_names
 
 
 def aggregate_daily(daily: pd.DataFrame) -> tuple[list[str], dict]:
@@ -136,27 +148,58 @@ def aggregate_daily(daily: pd.DataFrame) -> tuple[list[str], dict]:
     }
     return [f"{d.month}/{d.day}" for d in dates], result
 
-def weekly_payload(daily: pd.DataFrame) -> list[dict]:
-    part = daily.copy()
-    part["week_start"] = part["销售日期"] - pd.to_timedelta(part["销售日期"].dt.weekday, unit="D")
-    day_counts = part.groupby("week_start")["销售日期"].nunique()
-    complete_weeks = sorted(day_counts[day_counts.eq(7)].index)
+def weekly_payload(full: pd.DataFrame, daily: pd.DataFrame) -> list[dict]:
+    date_col = full.columns[4]
+    days_col = full.columns[3]
+    store_col = full.columns[5]
+    barcode_col = full.columns[7]
+    qty_col = full.columns[9]
+    revenue_col = full.columns[11]
+
+    historical = full[full[date_col].isna() & (full["_actual_week_start"] < START)].copy()
+    historical_days = (
+        historical[["_actual_week_start", "_month", "_week", days_col]]
+        .drop_duplicates()
+        .groupby("_actual_week_start")[days_col]
+        .sum()
+    )
+    daily_days = daily.groupby("_actual_week_start")[date_col].nunique()
+
+    week_cols = ["_actual_week_start", store_col, barcode_col, qty_col, revenue_col]
+    week_data = pd.concat([historical[week_cols], daily[week_cols]], ignore_index=True)
+    complete_weeks = sorted(
+        set(historical_days[historical_days.eq(7)].index)
+        | set(daily_days[daily_days.eq(7)].index)
+    )
+    complete_weeks = [week for week in complete_weeks if week >= pd.Timestamp("2026-04-01")]
+
     rows = []
     for week_start in complete_weeks:
-        week_part = part[part["week_start"].eq(week_start)]
-        item = {}
+        week_part = week_data[week_data["_actual_week_start"].eq(week_start)]
+        items = {}
         for product in PRODUCTS:
-            sku = week_part[week_part["条码"].eq(product["barcode"])]
-            qty = float(sku["销售数量"].sum())
-            sales = float(sku["销售收入"].sum())
-            stores = int(sku["仓位编码"].nunique())
-            item[product["id"]] = {
+            sku = week_part[week_part[barcode_col].eq(product["barcode"])]
+            qty = float(sku[qty_col].sum())
+            sales = float(sku[revenue_col].sum())
+            stores = int(sku[store_col].nunique())
+            items[product["id"]] = {
                 "qty": int(round(qty)),
                 "sales": round_or_none(sales, 2),
                 "stores": stores,
+                "price": round_or_none(sales / qty if qty else None, 2),
                 "psd": round_or_none(qty / stores / 7 if stores else None, 3),
             }
-        rows.append({"start": week_start.strftime("%Y-%m-%d"), "label": week_label(week_start), "items": item})
+        qty = float(week_part[qty_col].sum())
+        sales = float(week_part[revenue_col].sum())
+        stores = int(week_part[store_col].nunique())
+        items["total"] = {
+            "qty": int(round(qty)),
+            "sales": round_or_none(sales, 2),
+            "stores": stores,
+            "price": round_or_none(sales / qty if qty else None, 2),
+            "psd": round_or_none(qty / stores / 7 if stores else None, 3),
+        }
+        rows.append({"start": week_start.strftime("%Y-%m-%d"), "label": week_label(week_start), "items": items})
     return rows
 
 
@@ -262,9 +305,9 @@ def table_payload(daily: pd.DataFrame) -> list[dict]:
     return rows
 
 def build_data() -> dict:
-    daily, baseline, _ = load_data()
+    full, daily, baseline, _ = load_data()
     dates, daily_metrics = aggregate_daily(daily)
-    weeks = weekly_payload(daily)
+    weeks = weekly_payload(full, daily)
     elasticity = elasticity_payload(daily, baseline)
     tiers = tier_payload(daily, baseline)
     summary = summary_payload(daily)
@@ -285,7 +328,7 @@ def build_data() -> dict:
             "generatedAt": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
             "baselineRange": f"{BASELINE_START.month}/{BASELINE_START.day}-{BASELINE_END.month}/{BASELINE_END.day}",
             "postWeekRange": f"{START.month}/{START.day}-{POST_WEEK_END.month}/{POST_WEEK_END.day}",
-            "incompleteWeekNote": "周度 PSD 仅纳入完整自然周；数据截止日所在未满周自动剔除。",
+            "incompleteWeekNote": "周度走势纳入 2026 年 4 月以来的完整自然周，跨月周已合并；数据截止日所在的未满周自动剔除。",
         },
         "products": [{"id": p["id"], "name": p["name"], "short": p["short"], "color": p["color"]} for p in PRODUCTS],
         "dates": dates,
@@ -399,7 +442,15 @@ __NAV__
       <article class="panel wide"><div class="panel-head"><h2>每日销量走势</h2><span>7/27 起，按 SKU 汇总</span></div><div id="chart-qty" class="chart"></div></article>
       <article class="panel half"><div class="panel-head"><h2>每日销额走势</h2><span>销售收入合计</span></div><div id="chart-sales" class="chart"></div></article>
       <article class="panel wide"><div class="panel-head"><h2>每日单价走势</h2><span>每日销售收入 / 销售数量</span></div><div id="chart-price" class="chart"></div></article>
-      <article class="panel half"><div class="panel-head"><h2>完整周 PSD 对比</h2><span>未满自然周已剔除</span></div><div id="chart-weekly-psd" class="chart"></div></article>
+    </section>
+
+    <div class="section-title">完整周长期走势（4月-8月）</div>
+    <section class="grid">
+      <article class="panel full"><div class="panel-head"><h2>完整周销量走势</h2><span>仅完整自然周，跨月周已合并</span></div><div id="chart-weekly-qty" class="chart"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>完整周销额走势</h2><span>4月-8月完整周</span></div><div id="chart-weekly-sales" class="chart"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>完整周单价走势</h2><span>周销额 / 周销量</span></div><div id="chart-weekly-price" class="chart"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>完整周 PSD 走势</h2><span>周销量 / 周去重门店 / 7</span></div><div id="chart-weekly-psd" class="chart"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>完整周动销门店</h2><span>每周去重仓位数</span></div><div id="chart-weekly-stores" class="chart"></div></article>
     </section>
 
     <div class="section-title">降价效果与门店分层</div>
@@ -491,13 +542,53 @@ HTML_TEMPLATE += r'''
       }]),
     }));
 
-    const weeklyChart = echarts.init(document.getElementById("chart-weekly-psd"));
-    weeklyChart.setOption(baseOption({
-      xAxis: Object.assign({ type: "category", data: DATA.weeks.map(w => w.label) }, axisStyle()),
+    const weekLabels = DATA.weeks.map(w => w.label);
+    function weeklySeries(metric, options = {}) {
+      return products.map(p => ({
+        name: p.short, type: "line", data: DATA.weeks.map(w => w.items[p.id][metric]),
+        smooth: false, symbol: "circle", symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color },
+        emphasis: { focus: "series" }, ...options,
+      }));
+    }
+    const weeklyQtyChart = echarts.init(document.getElementById("chart-weekly-qty"));
+    weeklyQtyChart.setOption(baseOption({
+      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "?" }, axisStyle()),
+      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtInt.format(value) },
+      series: weeklySeries("qty"),
+    }));
+
+    const weeklySalesChart = echarts.init(document.getElementById("chart-weekly-sales"));
+    weeklySalesChart.setOption(baseOption({
+      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "?" }, axisStyle()),
+      series: weeklySeries("sales", { areaStyle: { opacity: 0.04 } }),
+    }));
+
+    const weeklyPriceChart = echarts.init(document.getElementById("chart-weekly-price"));
+    weeklyPriceChart.setOption(baseOption({
+      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "?/?" }, axisStyle()),
+      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : Number(value).toFixed(2) + " ?" },
+      series: weeklySeries("price"),
+    }));
+
+    const weeklyPsdChart = echarts.init(document.getElementById("chart-weekly-psd"));
+    weeklyPsdChart.setOption(baseOption({
+      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
       yAxis: Object.assign({ type: "value", name: "PSD" }, axisStyle()),
       tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : Number(value).toFixed(3) },
-      series: products.map(p => ({ name: p.short, type: "bar", barMaxWidth: 16, itemStyle: { color: p.color, borderRadius: [4,4,0,0] }, data: DATA.weeks.map(w => w.items[p.id].psd) })),
+      series: weeklySeries("psd"),
     }));
+
+    const weeklyStoresChart = echarts.init(document.getElementById("chart-weekly-stores"));
+    weeklyStoresChart.setOption(baseOption({
+      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "??" }, axisStyle()),
+      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtInt.format(value) },
+      series: products.map(p => ({ name: p.short, type: "line", data: DATA.weeks.map(w => w.items[p.id].stores), smooth: false, symbol: "circle", symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })),
+    }));
+
     const elasticityChart = echarts.init(document.getElementById("chart-elasticity"));
     elasticityChart.setOption(baseOption({
       legend: { top: 8, data: ["销量变化", "单价变化"] },
@@ -569,7 +660,7 @@ HTML_TEMPLATE += r'''
     );
 
     window.addEventListener("resize", () => {
-      [qtyChart, salesChart, priceChart, weeklyChart, elasticityChart, rankChart, tierChart].forEach(chart => chart.resize());
+      [qtyChart, salesChart, priceChart, weeklyQtyChart, weeklySalesChart, weeklyPriceChart, weeklyPsdChart, weeklyStoresChart, elasticityChart, rankChart, tierChart].forEach(chart => chart.resize());
     });
   </script>
 </body>
