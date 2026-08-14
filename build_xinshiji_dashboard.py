@@ -433,7 +433,7 @@ def nav_block(active: str) -> str:
     }}
   </style>
   <nav class="dashboard-nav">
-    <span class="brand">销售看板</span>
+    <span class="brand">大单品相关测试看板</span>
 {links_html}
   </nav>
   <!-- dashboard-nav:end -->'''
@@ -506,7 +506,7 @@ HTML_TEMPLATE = r'''<!doctype html>
 __NAV__
   <header class="topbar">
     <div>
-      <h1>新世纪 70g 玉米片降价分析看板</h1>
+      <h1>大单品相关测试看板</h1>
       <p id="meta"></p>
     </div>
     <span class="pill" id="data-state">每日更新</span>

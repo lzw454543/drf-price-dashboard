@@ -490,7 +490,7 @@ def nav_block(active: str) -> str:
     }}
   </style>
   <nav class="dashboard-nav">
-    <span class="brand">销售看板</span>
+    <span class="brand">大单品相关测试看板</span>
     <a class="{drf_class}" href="index.html">大润发 70g 价格测试</a>
     <a class="{yh_class}" href="yonghui.html">永辉 112g 促销分析</a>
     <a class="{xj_class}" href="xinshiji.html">新世纪 70g 价格弹性</a>
@@ -578,7 +578,7 @@ HTML_TEMPLATE = r'''<!doctype html>
 __NAV__
   <header class="topbar">
     <div>
-      <h1>永辉 112g 黄油太妃巴旦木玉米片促销分析</h1>
+      <h1>大单品相关测试看板</h1>
       <p id="meta"></p>
     </div>
   </header>
