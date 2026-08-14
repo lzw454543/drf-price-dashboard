@@ -1,4 +1,4 @@
-﻿﻿$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 $RepoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DashboardDir = "C:\Users\45454\Documents\Codex\2026-08-10\new-chat-2\outputs\dashboard"
 
@@ -19,7 +19,7 @@ try {
   git add index.html yonghui.html xinshiji.html offline.html yonghui-offline.html xinshiji-offline.html echarts.min.js build_yonghui_dashboard.py build_xinshiji_dashboard.py README.md .nojekyll publish.ps1
   $status = git status --porcelain
   if ($status) {
-    git commit -m "Update sales dashboards" | Out-Host
+    git commit -m "Fix dashboard publish script" | Out-Host
     git push origin main | Out-Host
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "Published updated dashboards to GitHub Pages."
