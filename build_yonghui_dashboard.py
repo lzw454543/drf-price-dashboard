@@ -578,7 +578,7 @@ __NAV__
       </article>
       <article class="panel half"><div class="panel-head"><h2>月内日均动销门店</h2><span>每日去重门店求和 / 当月日期数</span></div><div class="table-wrap"><table id="month-table"></table></div></article>
       <article class="panel wide"><div class="panel-head"><h2>横向对比：已标记 vs 未标记</h2><span>仅巴旦木玉米片；按“推广促销=是”标记</span></div><div id="chart-promo-compare" class="chart short"></div></article>
-      <article class="panel half"><div class="panel-head"><h2>推广期核心差异</h2><span>同日期数量与 PSD</span></div><div class="table-wrap"><table id="promo-table"></table></div></article>
+      <article class="panel half"><div class="panel-head"><h2>推广期核心差异</h2><span>PSD 与动销门店</span></div><div class="table-wrap"><table id="promo-table"></table></div></article>
       <article class="panel wide"><div class="panel-head"><h2>推广门店纵向同星期对比</h2><span>推广日 vs 非推广同星期均值</span></div><div id="chart-vertical" class="chart short"></div></article>
       <article class="panel half"><div class="panel-head"><h2>推广门店基线分层</h2><span>按非推广同星期单店日均分层</span></div><div id="chart-promo-tier" class="chart short"></div></article>
       <article class="panel half"><div class="panel-head"><h2>推广期活动层级分布</h2><span>按推广期单店日均销量分层</span></div><div id="chart-period-tier" class="chart short"></div></article>
@@ -623,7 +623,7 @@ __NAV__
         return {
           name: p.short, type:'line', data:p.daily[metric], smooth:true, showSymbol:false, connectNulls:false,
           lineStyle:{width: id==='butter'?2.6:1.9, color:p.color}, itemStyle:{color:p.color}, emphasis:{focus:'series'},
-          markLine: id==='butter' ? {symbol:'none', label:{formatter:'推广期'}, lineStyle:{color:'#dc2626',type:'dashed'}, data: DATA.promo.promoDates.map(d => ({xAxis: d}))} : undefined
+          markLine: id==='butter' ? {symbol:'none', label:{show:false}, lineStyle:{color:'#dc2626',type:'dashed'}, data: DATA.promo.promoDates.map(d => ({xAxis: d}))} : undefined
         };
       });
       return {
@@ -681,33 +681,30 @@ __NAV__
     function promoCompareOption() {
       const dates = DATA.promo.promoDaily.map(x=>x.date);
       return {
-        color:['#dc2626','#d1d5db','#2563eb','#60a5fa'], tooltip:{trigger:'axis', confine:true}, legend:{top:8}, grid:{left:56,right:56,top:54,bottom:42},
+        color:['#2563eb','#60a5fa'], tooltip:{trigger:'axis', confine:true, valueFormatter:v => fmtDec(v,3)}, legend:{top:8}, grid:{left:56,right:36,top:54,bottom:42},
         xAxis:{type:'category', data:dates, axisLabel:{color:'#6b7280'}},
-        yAxis:[{type:'value', name:'销量', splitLine:{lineStyle:{color:'#eef0f3'}}, axisLabel:{color:'#6b7280'}},{type:'value', name:'PSD', splitLine:{show:false}, axisLabel:{color:'#6b7280'}}],
+        yAxis:{type:'value', name:'PSD / 动销门店', splitLine:{lineStyle:{color:'#eef0f3'}}, axisLabel:{color:'#6b7280'}},
         series:[
-          {name:'推广门店销量', type:'bar', data:DATA.promo.promoDaily.map(x=>x.qty), itemStyle:{color:'#dc2626'}, barMaxWidth:24},
-          {name:'其他门店销量', type:'bar', data:DATA.promo.otherDaily.map(x=>x.qty), itemStyle:{color:'#d1d5db'}, barMaxWidth:24},
-          {name:'推广门店PSD', type:'line', yAxisIndex:1, data:DATA.promo.promoDaily.map(x=>x.psdActive), smooth:true, itemStyle:{color:'#2563eb'}},
-          {name:'其他门店PSD', type:'line', yAxisIndex:1, data:DATA.promo.otherDaily.map(x=>x.psdActive), smooth:true, itemStyle:{color:'#60a5fa'}}
+          {name:'已标记门店 PSD', type:'line', data:DATA.promo.promoDaily.map(x=>x.psdActive), smooth:true, symbolSize:7, lineStyle:{width:3,color:'#2563eb'}, itemStyle:{color:'#2563eb'}},
+          {name:'未标记门店 PSD', type:'line', data:DATA.promo.otherDaily.map(x=>x.psdActive), smooth:true, symbolSize:7, lineStyle:{width:3,color:'#60a5fa'}, itemStyle:{color:'#60a5fa'}}
         ]
       };
     }
 
-    function verticalOption() {
+function verticalOption() {
       const d = DATA.promo.verticalDaily;
       return {
-        color:['#dc2626','#6b7280','#16a34a'], tooltip:{trigger:'axis', confine:true}, legend:{top:8}, grid:{left:56,right:42,top:54,bottom:42},
+        color:['#dc2626','#6b7280'], tooltip:{trigger:'axis', confine:true, valueFormatter:v => fmtDec(v,3)}, legend:{top:8}, grid:{left:56,right:36,top:54,bottom:42},
         xAxis:{type:'category', data:d.map(x=>x.date), axisLabel:{color:'#6b7280'}},
-        yAxis:{type:'value', name:'推广门店 PSD / 店 / 日', splitLine:{lineStyle:{color:'#eef0f3'}}, axisLabel:{color:'#6b7280'}},
+        yAxis:{type:'value', name:'标记门店 PSD / 店 / 日', splitLine:{lineStyle:{color:'#eef0f3'}}, axisLabel:{color:'#6b7280'}},
         series:[
-          {name:'推广日', type:'bar', data:d.map(x=>x.promo), itemStyle:{color:'#dc2626'}, barMaxWidth:24},
-          {name:'同星期非推广基线', type:'line', data:d.map(x=>x.baseline), smooth:true, itemStyle:{color:'#6b7280'}, lineStyle:{width:2}},
-          {name:'提升量', type:'line', data:d.map(x=>x.promo!=null&&x.baseline!=null?+(x.promo-x.baseline).toFixed(3):null), smooth:true, itemStyle:{color:'#16a34a'}, lineStyle:{width:2,type:'dashed'}}
+          {name:'推广日 PSD', type:'line', data:d.map(x=>x.promo), smooth:true, symbolSize:7, lineStyle:{width:3,color:'#dc2626'}, itemStyle:{color:'#dc2626'}},
+          {name:'同星期非推广基线 PSD', type:'line', data:d.map(x=>x.baseline), smooth:true, symbolSize:7, lineStyle:{width:3,color:'#6b7280'}, itemStyle:{color:'#6b7280'}}
         ]
       };
     }
 
-    function promoTierOption() {
+function promoTierOption() {
       const rows = DATA.promo.storeTiers;
       return {
         color:['#e5e7eb','#dc2626','#6b7280'], tooltip:{trigger:'axis', confine:true}, legend:{top:8}, grid:{left:48,right:42,top:54,bottom:36},
@@ -732,11 +729,10 @@ __NAV__
     }
     function renderTables() {
       const s = DATA.promo.summary;
-      document.getElementById('promo-table').innerHTML = `<thead><tr><th>指标</th><th>推广门店</th><th>其他门店</th><th>差异</th></tr></thead><tbody>
-        <tr><td>日均销量</td><td>${fmtDec(s.promoDailyQty)}</td><td>${fmtDec(s.otherDailyQty)}</td><td>${fmtDec(s.promoDailyQty-s.otherDailyQty)}</td></tr>
-        <tr><td>总销量</td><td>${fmtInt(s.promoQty)}</td><td>${fmtInt(s.otherQty)}</td><td>${fmtInt(s.promoQty-s.otherQty)}</td></tr>
+      document.getElementById('promo-table').innerHTML = `<thead><tr><th>指标</th><th>已标记</th><th>对照</th><th>差异</th></tr></thead><tbody>
         <tr><td>日均动销门店</td><td>${fmtDec(s.promoActiveStores)}</td><td>${fmtDec(s.otherActiveStores)}</td><td>${fmtDec(s.promoActiveStores-s.otherActiveStores)}</td></tr>
         <tr><td>动销门店 PSD</td><td>${fmtDec(s.promoPsdActive,3)}</td><td>${fmtDec(s.otherPsdActive,3)}</td><td>${deltaHtml(s.promoPsdActive,s.otherPsdActive)}</td></tr>
+        <tr><td>标记店日 PSD</td><td>${fmtDec(s.promoPsdAssigned,3)}</td><td>${fmtDec(s.baselinePsdAssigned,3)}</td><td>${deltaHtml(s.promoPsdAssigned,s.baselinePsdAssigned)}</td></tr>
       </tbody>`;
       document.getElementById('sku-table').innerHTML = `<thead><tr><th>SKU</th><th>销量</th><th>销额</th><th>门店</th><th>单价</th></tr></thead><tbody>${DATA.productOrder.map(id=>{const p=DATA.products[id];return `<tr><td>${p.short}</td><td>${fmtInt(p.qty)}</td><td>${fmtMoney(p.sales)}</td><td>${fmtInt(p.stores)}</td><td>${fmtMoney2(p.price)}</td></tr>`}).join('')}</tbody>`;
       const monthRows = DATA.productOrder.flatMap(id => DATA.products[id].monthly.filter(m=>state.months.has(m.month)).map(m => ({product:DATA.products[id].short, ...m})));
