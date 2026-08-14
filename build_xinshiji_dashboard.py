@@ -369,7 +369,11 @@ def build_data() -> dict:
     post_price = post_sales_total / post_qty_total if post_qty_total else None
     qty_change = post_qty / pre_qty - 1 if pre_qty and post_qty else None
     price_change = post_price / pre_price - 1 if pre_price and post_price else None
-    elasticity_value = qty_change / price_change if qty_change is not None and price_change not in (None, 0) else None
+    core_elasticity_values = [
+        item["elasticity"] for item in elasticity
+        if item["id"] in {"cheese", "coconut", "jasmine"} and item["elasticity"] is not None
+    ]
+    elasticity_value = sum(core_elasticity_values) / len(core_elasticity_values) if core_elasticity_values else None
 
     return {
         "meta": {
@@ -491,7 +495,7 @@ __NAV__
       <article class="kpi"><div class="kpi-label">7/27 后累计销量</div><div class="kpi-value" id="kpi-qty">--</div><div class="kpi-sub"><span id="kpi-stores"></span><span class="neutral">包</span></div></article>
       <article class="kpi"><div class="kpi-label">7/27 后累计销额</div><div class="kpi-value" id="kpi-sales">--</div><div class="kpi-sub"><span id="kpi-date-range"></span><span class="neutral">元</span></div></article>
       <article class="kpi"><div class="kpi-label">累计成交单价</div><div class="kpi-value" id="kpi-price">--</div><div class="kpi-sub"><span id="kpi-price-move"></span><span class="neutral">销额/销量</span></div></article>
-      <article class="kpi"><div class="kpi-label">降价首周价格弹性</div><div class="kpi-value" id="kpi-elasticity">--</div><div class="kpi-sub"><span id="kpi-change"></span><span class="neutral">销量/价格</span></div></article>
+      <article class="kpi"><div class="kpi-label">??????????3????</div><div class="kpi-value" id="kpi-elasticity">--</div><div class="kpi-sub"><span id="kpi-change"></span><span class="neutral">销量/价格</span></div></article>
     </section>
 
     <div class="section-title">每日价格弹性走势</div>
