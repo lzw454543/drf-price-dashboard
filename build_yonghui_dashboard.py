@@ -256,17 +256,31 @@ def promo_analysis(target: pd.DataFrame, promo_keys: set[tuple[str, str, pd.Time
     promo_psd_active = promo_qty / promo_store_days_active if promo_store_days_active else None
     other_psd_active = other_qty / other_store_days_active if other_store_days_active else None
 
-    vertical_daily = []
+    # Per-date active promo stores: marked AND had 112g sales that day.
+    active_promo_store_sets = {}
     for date in promo_dates:
-        stores_for_date = sorted(promo_store_sets[date])
+        active_promo_store_sets[date] = {
+            s for s in promo_store_sets[date]
+            if s in promo_pivot.index and float(promo_pivot.loc[s, date]) > 0
+        }
+
+    vertical_daily = []
+    vertical_baseline_total = 0.0
+    vertical_baseline_denom = 0
+    for date in promo_dates:
+        active_stores = sorted(active_promo_store_sets[date])
+        if not active_stores:
+            continue
         same_weekday_dates = [d for d in target_dates if d.weekday() == date.weekday()]
         baseline_total = 0.0
         baseline_denominator = 0
         for base_date in same_weekday_dates:
-            store_mask = ~promo_flag_pivot.loc[stores_for_date, base_date]
-            baseline_total += float(all_pivot.loc[stores_for_date, base_date][store_mask].sum())
+            if base_date == date:
+                continue
+            store_mask = ~promo_flag_pivot.loc[active_stores, base_date]
+            baseline_total += float(all_pivot.loc[active_stores, base_date][store_mask].sum())
             baseline_denominator += int(store_mask.sum())
-        promo_value = float(all_pivot.loc[stores_for_date, date].sum()) / len(stores_for_date)
+        promo_value = float(promo_pivot.loc[active_stores, date].sum()) / len(active_stores)
         baseline_value = baseline_total / baseline_denominator if baseline_denominator else None
         vertical_daily.append({
             "date": date.strftime("%m-%d"),
@@ -274,6 +288,10 @@ def promo_analysis(target: pd.DataFrame, promo_keys: set[tuple[str, str, pd.Time
             "baseline": round_or_none(baseline_value, 3),
             "delta": round_or_none(promo_value / baseline_value - 1 if baseline_value else None, 3),
         })
+        vertical_baseline_total += baseline_total
+        vertical_baseline_denom += baseline_denominator
+
+    vertical_baseline_psd = vertical_baseline_total / vertical_baseline_denom if vertical_baseline_denom else None
 
     store_tier_inputs = []
     for store in all_promo_stores:
@@ -340,6 +358,9 @@ def promo_analysis(target: pd.DataFrame, promo_keys: set[tuple[str, str, pd.Time
             "promoPsdAssigned": round_or_none(promo_psd_assigned, 3),
             "baselinePsdAssigned": round_or_none(baseline_psd, 3),
             "promoAssignedUplift": round_or_none(promo_psd_assigned / baseline_psd - 1 if baseline_psd else None, 3),
+            "verticalPromoPsd": round_or_none(promo_psd_active, 3),
+            "verticalBaselinePsd": round_or_none(vertical_baseline_psd, 3),
+            "verticalUplift": round_or_none(promo_psd_active / vertical_baseline_psd - 1 if vertical_baseline_psd else None, 3),
         },
         "storeTiers": tier_rows,
         "periodTiers": period_tiers,
@@ -732,7 +753,7 @@ function promoTierOption() {
       document.getElementById('promo-table').innerHTML = `<thead><tr><th>指标</th><th>已标记</th><th>对照</th><th>差异</th></tr></thead><tbody>
         <tr><td>日均动销门店</td><td>${fmtDec(s.promoActiveStores)}</td><td>${fmtDec(s.otherActiveStores)}</td><td>${fmtDec(s.promoActiveStores-s.otherActiveStores)}</td></tr>
         <tr><td>动销门店 PSD</td><td>${fmtDec(s.promoPsdActive,3)}</td><td>${fmtDec(s.otherPsdActive,3)}</td><td>${deltaHtml(s.promoPsdActive,s.otherPsdActive)}</td></tr>
-        <tr><td>标记店日 PSD</td><td>${fmtDec(s.promoPsdAssigned,3)}</td><td>${fmtDec(s.baselinePsdAssigned,3)}</td><td>${deltaHtml(s.promoPsdAssigned,s.baselinePsdAssigned)}</td></tr>
+        <tr><td>纵向推广日 PSD</td><td>${fmtDec(s.verticalPromoPsd,3)}</td><td>${fmtDec(s.verticalBaselinePsd,3)}</td><td>${deltaHtml(s.verticalPromoPsd,s.verticalBaselinePsd)}</td></tr>
       </tbody>`;
       document.getElementById('sku-table').innerHTML = `<thead><tr><th>SKU</th><th>销量</th><th>销额</th><th>门店</th><th>单价</th></tr></thead><tbody>${DATA.productOrder.map(id=>{const p=DATA.products[id];return `<tr><td>${p.short}</td><td>${fmtInt(p.qty)}</td><td>${fmtMoney(p.sales)}</td><td>${fmtInt(p.stores)}</td><td>${fmtMoney2(p.price)}</td></tr>`}).join('')}</tbody>`;
       const monthRows = DATA.productOrder.flatMap(id => DATA.products[id].monthly.filter(m=>state.months.has(m.month)).map(m => ({product:DATA.products[id].short, ...m})));
@@ -745,11 +766,11 @@ function promoTierOption() {
       document.getElementById('kpi-qty').textContent = fmtInt(butter.qty);
       document.getElementById('kpi-sales').textContent = fmtMoney(butter.sales);
       document.getElementById('kpi-promo-stores').textContent = fmtInt(DATA.promo.promoStoreCount);
-      document.getElementById('kpi-uplift').textContent = pct(s.promoAssignedUplift);
+      document.getElementById('kpi-uplift').textContent = pct(s.verticalUplift);
       document.getElementById('kpi-stores').textContent = `动销门店 ${fmtInt(butter.stores)}`;
       document.getElementById('kpi-price').textContent = `均价 ${fmtMoney2(butter.price)}`;
       document.getElementById('kpi-promo-dates').textContent = `${DATA.promo.promoStart.slice(5)} 至 ${DATA.promo.promoEnd.slice(5)}`;
-      document.getElementById('kpi-psd-base').textContent = `基线 ${fmtDec(s.baselinePsdAssigned,3)}，推广期 ${fmtDec(s.promoPsdAssigned,3)}`;
+      document.getElementById('kpi-psd-base').textContent = `基线 ${fmtDec(s.verticalBaselinePsd,3)}，推广期 ${fmtDec(s.verticalPromoPsd,3)}`;
       document.getElementById('kpi-psd-delta').innerHTML = deltaHtml(s.promoPsdAssigned, s.baselinePsdAssigned);
     }
 
@@ -771,7 +792,7 @@ function promoTierOption() {
 
     document.getElementById('meta').textContent = `数据区间 ${DATA.meta.dataStart} 至 ${DATA.meta.dataEnd} | 最近完整周 ${DATA.meta.lastCompleteWeek} | 生成于 ${DATA.meta.generatedAt}`;
     document.getElementById('last-week').textContent = `${DATA.lastWeek.start} 至 ${DATA.lastWeek.end}`;
-    document.getElementById('footnote').textContent = `说明：${DATA.meta.missingDates.length ? DATA.meta.missingDates.slice(0,6).join('、') + ' 等日期' : '无日期'}源表无记录，不纳入周度 PSD；8月10日至8月16日因当前源表未满7天也已剔除。单价为最终销额除以销量，不等于标价。推广门店来自飞书“永辉活动门店”清单，共 ${DATA.promo.promoStoreCount} 家；推广资源期按补充信息固定为 ${DATA.promo.promoStart} 至 ${DATA.promo.promoEnd}。`;
+    document.getElementById('footnote').textContent = `说明：${DATA.meta.missingDates.length ? DATA.meta.missingDates.slice(0,6).join('、') + ' 等日期' : '无日期'}源表无记录，不纳入周度 PSD；8月10日至8月16日因当前源表未满7天也已剔除。单价为最终销额除以销量，不等于标价。推广门店按日期变化：每个促销日只取当天在“永辉活动门店”清单标记“是”且当天有112g动销的门店计入PSD分母，标记但当日无动销的门店不计入。横向对比为推广门店与同日未标记门店的PSD对比；纵向对比为同一批推广门店在促销日与同星期非促销日的PSD对比。共 ${DATA.promo.promoStoreCount} 家门店参与过推广。`;
     renderMonthFilters();
     render();
     window.addEventListener('resize', () => Object.values(chartInstances).forEach(c => c.resize()));
