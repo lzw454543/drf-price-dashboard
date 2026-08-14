@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+﻿﻿$ErrorActionPreference = "Stop"
 $RepoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DashboardDir = "C:\Users\45454\Documents\Codex\2026-08-10\new-chat-2\outputs\dashboard"
 
@@ -9,14 +9,17 @@ Copy-Item -LiteralPath (Join-Path $DashboardDir "大润发价格测试看板-离
 python (Join-Path $RepoDir "build_yonghui_dashboard.py")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+python (Join-Path $RepoDir "build_xinshiji_dashboard.py")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Push-Location $RepoDir
 try {
   git config user.name "Codex DRF Dashboard"
   git config user.email "codex-drf@example.local"
-  git add index.html yonghui.html offline.html yonghui-offline.html echarts.min.js build_yonghui_dashboard.py README.md .nojekyll publish.ps1
+  git add index.html yonghui.html xinshiji.html offline.html yonghui-offline.html xinshiji-offline.html echarts.min.js build_yonghui_dashboard.py build_xinshiji_dashboard.py README.md .nojekyll publish.ps1
   $status = git status --porcelain
   if ($status) {
-    git commit -m "Add Yonghui promotion dashboard" | Out-Host
+    git commit -m "Update sales dashboards" | Out-Host
     git push origin main | Out-Host
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "Published updated dashboards to GitHub Pages."

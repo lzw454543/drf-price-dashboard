@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新世纪 70g 玉米片价格弹性看板</title>
+  <style>
+    :root { --bg:#f5f6f8; --panel:#fff; --border:#e5e7eb; --text:#111827; --muted:#6b7280; --green:#16a34a; --red:#dc2626; --blue:#2563eb; --amber:#d97706; --teal:#0f766e; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; font-size:14px; }
+    .topbar { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; padding:22px 28px 14px; }
+    h1 { margin:0 0 6px; font-size:22px; letter-spacing:0; }
+    h2 { margin:0; font-size:15px; }
+    p { margin:0; color:var(--muted); }
+    main { padding:0 28px 34px; }
+    .kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:16px; }
+    .kpi { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; }
+    .kpi-label { color:var(--muted); font-size:13px; margin-bottom:10px; }
+    .kpi-value { font-size:28px; font-weight:750; line-height:1.1; margin-bottom:8px; }
+    .kpi-sub { color:var(--muted); font-size:12px; display:flex; justify-content:space-between; gap:8px; align-items:center; }
+    .up { color:var(--green); font-weight:750; }
+    .down { color:var(--red); font-weight:750; }
+    .neutral { color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:16px; }
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; min-width:0; }
+    .panel-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px; }
+    .panel-head span { color:var(--muted); font-size:12px; white-space:nowrap; }
+    .wide { grid-column:span 7; }
+    .half { grid-column:span 5; }
+    .full { grid-column:span 12; }
+    .chart { width:100%; height:340px; }
+    .chart.short { height:300px; }
+    .table-wrap { max-height:380px; overflow:auto; border:1px solid #eef0f3; border-radius:6px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th,td { padding:9px 10px; border-bottom:1px solid #eef0f3; text-align:right; white-space:nowrap; }
+    th:first-child,td:first-child { text-align:left; }
+    th { position:sticky; top:0; background:#fff; color:var(--muted); font-weight:700; z-index:1; }
+    .note { margin-top:12px; color:var(--muted); font-size:12px; line-height:1.7; }
+    .section-title { margin:22px 0 12px; font-size:16px; font-weight:750; }
+    .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:999px; background:#f3f4f6; color:#374151; font-size:12px; font-weight:700; }
+    .good { color:var(--green); }
+    .bad { color:var(--red); }
+    @media (max-width:1100px) { .topbar { flex-direction:column; } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .wide,.half { grid-column:span 12; } }
+    @media (max-width:640px) { .topbar,main { padding-left:16px; padding-right:16px; } .kpis { grid-template-columns:1fr; } .panel-head { flex-direction:column; } .chart { height:280px; } .kpi-value { font-size:24px; } }
+  </style>
+  <script src="echarts.min.js"></script>
+</head>
+<body>
+<!-- dashboard-nav:start -->
+  <style>
+    .dashboard-nav { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 10px 28px; background: rgba(255,255,255,.94); border-bottom: 1px solid #e5e7eb; backdrop-filter: blur(8px); }
+    .dashboard-nav .brand { color: #6b7280; font-weight: 750; margin-right: 6px; white-space: nowrap; }
+    .dashboard-nav a { padding: 7px 12px; border-radius: 6px; color: #374151; text-decoration: none; font-size: 13px; font-weight: 700; white-space: nowrap; }
+    .dashboard-nav a.active { background: #111827; color: #fff; }
+    @media (max-width: 640px) { .dashboard-nav { padding-left: 16px; padding-right: 16px; overflow-x: auto; } }
+  </style>
+  <nav class="dashboard-nav">
+    <span class="brand">销售看板</span>
+    <a href="index.html">大润发 70g 价格测试</a>
+    <a href="yonghui.html">永辉 112g 促销分析</a>
+    <a class="active" href="xinshiji.html">新世纪 70g 价格弹性</a>
+  </nav>
+  <!-- dashboard-nav:end -->
+  <header class="topbar">
+    <div>
+      <h1>新世纪 70g 玉米片价格弹性看板</h1>
+      <p id="meta"></p>
+    </div>
+    <span class="pill" id="data-state">每日更新</span>
+  </header>
+
+  <main>
+    <section class="kpis">
+      <article class="kpi"><div class="kpi-label">7/27 后累计销量</div><div class="kpi-value" id="kpi-qty">--</div><div class="kpi-sub"><span id="kpi-stores"></span><span class="neutral">包</span></div></article>
+      <article class="kpi"><div class="kpi-label">7/27 后累计销额</div><div class="kpi-value" id="kpi-sales">--</div><div class="kpi-sub"><span id="kpi-date-range"></span><span class="neutral">元</span></div></article>
+      <article class="kpi"><div class="kpi-label">累计成交单价</div><div class="kpi-value" id="kpi-price">--</div><div class="kpi-sub"><span id="kpi-price-move"></span><span class="neutral">销额/销量</span></div></article>
+      <article class="kpi"><div class="kpi-label">降价首周价格弹性</div><div class="kpi-value" id="kpi-elasticity">--</div><div class="kpi-sub"><span id="kpi-change"></span><span class="neutral">销量/价格</span></div></article>
+    </section>
+
+    <div class="section-title">每日价格弹性走势</div>
+    <section class="grid">
+      <article class="panel wide"><div class="panel-head"><h2>每日销量走势</h2><span>7/27 起，按 SKU 汇总</span></div><div id="chart-qty" class="chart"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>每日销额走势</h2><span>销售收入合计</span></div><div id="chart-sales" class="chart"></div></article>
+      <article class="panel wide"><div class="panel-head"><h2>每日单价走势</h2><span>每日销售收入 / 销售数量</span></div><div id="chart-price" class="chart"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>完整周 PSD 对比</h2><span>未满自然周已剔除</span></div><div id="chart-weekly-psd" class="chart"></div></article>
+    </section>
+
+    <div class="section-title">降价效果与门店分层</div>
+    <section class="grid">
+      <article class="panel wide"><div class="panel-head"><h2>降价首周销量与价格变化</h2><span>对比降价前完整周</span></div><div id="chart-elasticity" class="chart short"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>SKU 累计销量排行</h2><span>最大值绿色强调</span></div><div id="chart-rank" class="chart short"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>门店分层 PSD 对比</h2><span>按降价前单店日销量分层</span></div><div id="chart-tier" class="chart short"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>分层明细</h2><span>合计为四个 SKU 口径</span></div><div class="table-wrap"><table id="tier-table"></table></div></article>
+      <article class="panel full"><div class="panel-head"><h2>SKU 汇总表</h2><span>7/27 后累计口径</span></div><div class="table-wrap"><table id="summary-table"></table></div></article>
+      <article class="panel full"><div class="panel-head"><h2>每日销量与销额明细</h2><span>每个 SKU 分别汇总</span></div><div class="table-wrap"><table id="daily-table"></table></div><div class="note" id="week-note"></div></article>
+    </section>
+  </main>
+
+  <script>
+    const DATA = {"meta": {"start": "2026-07-27", "last": "2026-08-13", "generatedAt": "2026-08-14 16:23", "baselineRange": "7/20-7/26", "postWeekRange": "7/27-8/2", "incompleteWeekNote": "周度 PSD 仅纳入完整自然周；数据截止日所在未满周自动剔除。"}, "products": [{"id": "cheese", "name": "食验室厚厚奶酪玉米片70g", "short": "厚厚奶酪", "color": "#16a34a"}, {"id": "coconut", "name": "食验室生椰奶酪玉米片70g", "short": "生椰奶酪", "color": "#d97706"}, {"id": "jasmine", "name": "食验室七窨茉莉奶酪玉米片70g", "short": "七窨茉莉", "color": "#2563eb"}, {"id": "chocolate", "name": "食验室浓浓巧克力玉米片70g", "short": "浓浓巧克力", "color": "#0f766e"}], "dates": ["7/27", "7/28", "7/29", "7/30", "7/31", "8/1", "8/2", "8/3", "8/4", "8/5", "8/6", "8/7", "8/8", "8/9", "8/10", "8/11", "8/12", "8/13"], "daily": {"cheese": {"qty": [61.0, 51.0, 85.0, 89.0, 85.0, 76.0, 92.0, 123.0, 94.0, 71.0, 68.0, 86.0, 90.0, 81.0, 67.0, 81.0, 79.0, 77.0], "sales": [423.75, 351.9, 588.52, 596.03, 562.58, 511.5, 606.59, 683.29, 651.5, 485.12, 463.46, 570.6, 559.6, 480.72, 418.2, 519.75, 485.97, 433.28], "stores": [38, 38, 51, 46, 53, 45, 54, 48, 45, 41, 43, 48, 47, 42, 43, 40, 38, 36], "price": [6.95, 6.9, 6.92, 6.7, 6.62, 6.73, 6.59, 5.56, 6.93, 6.83, 6.82, 6.63, 6.22, 5.93, 6.24, 6.42, 6.15, 5.63]}, "coconut": {"qty": [74.0, 65.0, 90.0, 58.0, 102.0, 87.0, 81.0, 99.0, 72.0, 51.0, 63.0, 51.0, 76.0, 71.0, 67.0, 64.0, 74.0, 59.0], "sales": [438.1, 364.8, 573.56, 399.05, 656.46, 550.98, 541.17, 583.07, 484.38, 340.41, 389.01, 356.63, 470.88, 478.54, 431.46, 400.98, 309.79, 298.97], "stores": [42, 37, 49, 34, 47, 48, 49, 48, 44, 33, 41, 34, 44, 45, 36, 37, 30, 25], "price": [5.92, 5.61, 6.37, 6.88, 6.44, 6.33, 6.68, 5.89, 6.73, 6.67, 6.17, 6.99, 6.2, 6.74, 6.44, 6.27, 4.19, 5.07]}, "jasmine": {"qty": [64.0, 35.0, 34.0, 33.0, 62.0, 44.0, 57.0, 39.0, 47.0, 25.0, 53.0, 27.0, 35.0, 33.0, 32.0, 31.0, 25.0, 43.0], "sales": [296.5, 221.9, 185.95, 197.3, 294.5, 289.9, 319.8, 216.8, 289.2, 172.5, 248.6, 161.8, 206.2, 141.4, 181.6, 112.1, 106.0, 148.8], "stores": [31, 25, 22, 23, 33, 33, 30, 24, 28, 22, 18, 19, 24, 18, 22, 13, 14, 14], "price": [4.63, 6.34, 5.47, 5.98, 4.75, 6.59, 5.61, 5.56, 6.15, 6.9, 4.69, 5.99, 5.89, 4.28, 5.68, 3.62, 4.24, 3.46]}, "chocolate": {"qty": [32.0, 26.0, 35.0, 40.0, 45.0, 42.0, 40.0, 50.0, 35.0, 27.0, 30.0, 21.0, 36.0, 39.0, 20.0, 29.0, 23.0, 18.0], "sales": [220.8, 179.4, 241.5, 270.66, 304.21, 286.08, 263.02, 314.21, 243.24, 188.03, 185.13, 144.9, 248.41, 270.28, 138.0, 200.11, 158.7, 124.2], "stores": [24, 22, 25, 28, 32, 29, 32, 36, 24, 24, 23, 17, 26, 26, 16, 21, 18, 18], "price": [6.9, 6.9, 6.9, 6.77, 6.76, 6.81, 6.58, 6.28, 6.95, 6.96, 6.17, 6.9, 6.9, 6.93, 6.9, 6.9, 6.9, 6.9]}, "total": {"qty": [231.0, 177.0, 244.0, 220.0, 294.0, 249.0, 270.0, 311.0, 248.0, 174.0, 214.0, 185.0, 237.0, 224.0, 186.0, 205.0, 201.0, 197.0], "sales": [1379.15, 1118.0, 1589.53, 1463.04, 1817.75, 1638.46, 1730.58, 1797.37, 1668.32, 1186.06, 1286.2, 1233.93, 1485.09, 1370.94, 1169.26, 1232.94, 1060.46, 1005.25], "stores": [77, 77, 84, 75, 84, 86, 94, 82, 78, 75, 80, 69, 82, 79, 67, 69, 69, 66], "price": [5.97, 6.32, 6.51, 6.65, 6.18, 6.58, 6.41, 5.78, 6.73, 6.82, 6.01, 6.67, 6.27, 6.12, 6.29, 6.01, 5.28, 5.1]}}, "weeks": [{"start": "2026-07-27", "label": "7/27-8/2", "items": {"cheese": {"qty": 539, "sales": 3640.87, "stores": 116, "psd": 0.664}, "coconut": {"qty": 557, "sales": 3524.12, "stores": 109, "psd": 0.73}, "jasmine": {"qty": 329, "sales": 1805.85, "stores": 87, "psd": 0.54}, "chocolate": {"qty": 260, "sales": 1765.67, "stores": 86, "psd": 0.432}}}, {"start": "2026-08-03", "label": "8/3-8/9", "items": {"cheese": {"qty": 613, "sales": 3894.29, "stores": 115, "psd": 0.761}, "coconut": {"qty": 483, "sales": 3102.92, "stores": 112, "psd": 0.616}, "jasmine": {"qty": 259, "sales": 1436.5, "stores": 82, "psd": 0.451}, "chocolate": {"qty": 238, "sales": 1594.2, "stores": 85, "psd": 0.4}}}], "summary": [{"id": "cheese", "name": "食验室厚厚奶酪玉米片70g", "short": "厚厚奶酪", "color": "#16a34a", "qty": 1456, "sales": 9392.36, "stores": 131, "price": 6.45}, {"id": "coconut", "name": "食验室生椰奶酪玉米片70g", "short": "生椰奶酪", "color": "#d97706", "qty": 1304, "sales": 8068.24, "stores": 127, "price": 6.19}, {"id": "jasmine", "name": "食验室七窨茉莉奶酪玉米片70g", "short": "七窨茉莉", "color": "#2563eb", "qty": 719, "sales": 3790.85, "stores": 111, "price": 5.27}, {"id": "chocolate", "name": "食验室浓浓巧克力玉米片70g", "short": "浓浓巧克力", "color": "#0f766e", "qty": 588, "sales": 3980.88, "stores": 112, "price": 6.77}], "elasticity": [{"id": "cheese", "short": "厚厚奶酪", "color": "#16a34a", "preQty": 438, "postQty": 539, "preSales": 4166.91, "postSales": 3640.87, "preStores": 111, "postStores": 116, "prePrice": 9.51, "postPrice": 6.75, "qtyChange": 0.2306, "priceChange": -0.29, "elasticity": -0.795}, {"id": "coconut", "short": "生椰奶酪", "color": "#d97706", "preQty": 468, "postQty": 557, "preSales": 4210.93, "postSales": 3524.12, "preStores": 113, "postStores": 109, "prePrice": 9.0, "postPrice": 6.33, "qtyChange": 0.1902, "priceChange": -0.2968, "elasticity": -0.641}, {"id": "jasmine", "short": "七窨茉莉", "color": "#2563eb", "preQty": 291, "postQty": 329, "preSales": 2291.92, "postSales": 1805.85, "preStores": 92, "postStores": 87, "prePrice": 7.88, "postPrice": 5.49, "qtyChange": 0.1306, "priceChange": -0.3031, "elasticity": -0.431}, {"id": "chocolate", "short": "浓浓巧克力", "color": "#0f766e", "preQty": 169, "postQty": 260, "preSales": 1625.7, "postSales": 1765.67, "preStores": 70, "postStores": 86, "prePrice": 9.62, "postPrice": 6.79, "qtyChange": 0.5385, "priceChange": -0.294, "elasticity": -1.831}], "tiers": [{"tier": "0-1", "stores": 47, "prePsd": 0.559, "postPsd": 1.526, "uplift": 1.7283}, {"tier": "1-2", "stores": 43, "prePsd": 1.319, "postPsd": 1.568, "uplift": 0.1889}, {"tier": "2-5", "stores": 39, "prePsd": 2.875, "postPsd": 2.575, "uplift": -0.1045}], "table": [{"date": "2026-07-27", "label": "7/27", "items": {"cheese": {"qty": 61, "sales": 423.75}, "coconut": {"qty": 74, "sales": 438.1}, "jasmine": {"qty": 64, "sales": 296.5}, "chocolate": {"qty": 32, "sales": 220.8}}, "totalQty": 231, "totalSales": 1379.15}, {"date": "2026-07-28", "label": "7/28", "items": {"cheese": {"qty": 51, "sales": 351.9}, "coconut": {"qty": 65, "sales": 364.8}, "jasmine": {"qty": 35, "sales": 221.9}, "chocolate": {"qty": 26, "sales": 179.4}}, "totalQty": 177, "totalSales": 1118.0}, {"date": "2026-07-29", "label": "7/29", "items": {"cheese": {"qty": 85, "sales": 588.52}, "coconut": {"qty": 90, "sales": 573.56}, "jasmine": {"qty": 34, "sales": 185.95}, "chocolate": {"qty": 35, "sales": 241.5}}, "totalQty": 244, "totalSales": 1589.53}, {"date": "2026-07-30", "label": "7/30", "items": {"cheese": {"qty": 89, "sales": 596.03}, "coconut": {"qty": 58, "sales": 399.05}, "jasmine": {"qty": 33, "sales": 197.3}, "chocolate": {"qty": 40, "sales": 270.66}}, "totalQty": 220, "totalSales": 1463.04}, {"date": "2026-07-31", "label": "7/31", "items": {"cheese": {"qty": 85, "sales": 562.58}, "coconut": {"qty": 102, "sales": 656.46}, "jasmine": {"qty": 62, "sales": 294.5}, "chocolate": {"qty": 45, "sales": 304.21}}, "totalQty": 294, "totalSales": 1817.75}, {"date": "2026-08-01", "label": "8/1", "items": {"cheese": {"qty": 76, "sales": 511.5}, "coconut": {"qty": 87, "sales": 550.98}, "jasmine": {"qty": 44, "sales": 289.9}, "chocolate": {"qty": 42, "sales": 286.08}}, "totalQty": 249, "totalSales": 1638.46}, {"date": "2026-08-02", "label": "8/2", "items": {"cheese": {"qty": 92, "sales": 606.59}, "coconut": {"qty": 81, "sales": 541.17}, "jasmine": {"qty": 57, "sales": 319.8}, "chocolate": {"qty": 40, "sales": 263.02}}, "totalQty": 270, "totalSales": 1730.58}, {"date": "2026-08-03", "label": "8/3", "items": {"cheese": {"qty": 123, "sales": 683.29}, "coconut": {"qty": 99, "sales": 583.07}, "jasmine": {"qty": 39, "sales": 216.8}, "chocolate": {"qty": 50, "sales": 314.21}}, "totalQty": 311, "totalSales": 1797.37}, {"date": "2026-08-04", "label": "8/4", "items": {"cheese": {"qty": 94, "sales": 651.5}, "coconut": {"qty": 72, "sales": 484.38}, "jasmine": {"qty": 47, "sales": 289.2}, "chocolate": {"qty": 35, "sales": 243.24}}, "totalQty": 248, "totalSales": 1668.32}, {"date": "2026-08-05", "label": "8/5", "items": {"cheese": {"qty": 71, "sales": 485.12}, "coconut": {"qty": 51, "sales": 340.41}, "jasmine": {"qty": 25, "sales": 172.5}, "chocolate": {"qty": 27, "sales": 188.03}}, "totalQty": 174, "totalSales": 1186.06}, {"date": "2026-08-06", "label": "8/6", "items": {"cheese": {"qty": 68, "sales": 463.46}, "coconut": {"qty": 63, "sales": 389.01}, "jasmine": {"qty": 53, "sales": 248.6}, "chocolate": {"qty": 30, "sales": 185.13}}, "totalQty": 214, "totalSales": 1286.2}, {"date": "2026-08-07", "label": "8/7", "items": {"cheese": {"qty": 86, "sales": 570.6}, "coconut": {"qty": 51, "sales": 356.63}, "jasmine": {"qty": 27, "sales": 161.8}, "chocolate": {"qty": 21, "sales": 144.9}}, "totalQty": 185, "totalSales": 1233.93}, {"date": "2026-08-08", "label": "8/8", "items": {"cheese": {"qty": 90, "sales": 559.6}, "coconut": {"qty": 76, "sales": 470.88}, "jasmine": {"qty": 35, "sales": 206.2}, "chocolate": {"qty": 36, "sales": 248.41}}, "totalQty": 237, "totalSales": 1485.09}, {"date": "2026-08-09", "label": "8/9", "items": {"cheese": {"qty": 81, "sales": 480.72}, "coconut": {"qty": 71, "sales": 478.54}, "jasmine": {"qty": 33, "sales": 141.4}, "chocolate": {"qty": 39, "sales": 270.28}}, "totalQty": 224, "totalSales": 1370.94}, {"date": "2026-08-10", "label": "8/10", "items": {"cheese": {"qty": 67, "sales": 418.2}, "coconut": {"qty": 67, "sales": 431.46}, "jasmine": {"qty": 32, "sales": 181.6}, "chocolate": {"qty": 20, "sales": 138.0}}, "totalQty": 186, "totalSales": 1169.26}, {"date": "2026-08-11", "label": "8/11", "items": {"cheese": {"qty": 81, "sales": 519.75}, "coconut": {"qty": 64, "sales": 400.98}, "jasmine": {"qty": 31, "sales": 112.1}, "chocolate": {"qty": 29, "sales": 200.11}}, "totalQty": 205, "totalSales": 1232.94}, {"date": "2026-08-12", "label": "8/12", "items": {"cheese": {"qty": 79, "sales": 485.97}, "coconut": {"qty": 74, "sales": 309.79}, "jasmine": {"qty": 25, "sales": 106.0}, "chocolate": {"qty": 23, "sales": 158.7}}, "totalQty": 201, "totalSales": 1060.46}, {"date": "2026-08-13", "label": "8/13", "items": {"cheese": {"qty": 77, "sales": 433.28}, "coconut": {"qty": 59, "sales": 298.97}, "jasmine": {"qty": 43, "sales": 148.8}, "chocolate": {"qty": 18, "sales": 124.2}}, "totalQty": 197, "totalSales": 1005.25}], "kpi": {"totalQty": 4067, "totalSales": 25232.33, "totalStores": 135, "totalPrice": 6.2, "prePrice": 9.0, "postPrice": 6.37, "qtyChange": 0.2335, "priceChange": -0.2921, "elasticity": -0.799}};
+    const products = DATA.products;
+    const dates = DATA.dates;
+    const productById = Object.fromEntries(products.map(p => [p.id, p]));
+
+    const fmtInt = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
+    const fmtMoney = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    function pct(value) {
+      if (value === null || value === undefined) return "--";
+      return (value > 0 ? "+" : "") + (value * 100).toFixed(1) + "%";
+    }
+
+    function setText(id, text) { document.getElementById(id).textContent = text; }
+
+    setText("meta", "数据范围：" + DATA.meta.start + " 至 " + DATA.meta.last + "；生成时间：" + DATA.meta.generatedAt);
+    setText("data-state", "数据截止 " + DATA.meta.last);
+    setText("kpi-qty", fmtInt.format(DATA.kpi.totalQty));
+    setText("kpi-sales", "¥" + fmtMoney.format(DATA.kpi.totalSales));
+    setText("kpi-price", "¥" + DATA.kpi.totalPrice.toFixed(2));
+    setText("kpi-elasticity", DATA.kpi.elasticity.toFixed(2));
+    setText("kpi-stores", "覆盖 " + DATA.kpi.totalStores + " 家门店");
+    setText("kpi-date-range", DATA.meta.start + " 至 " + DATA.meta.last);
+    setText("kpi-price-move", DATA.kpi.prePrice.toFixed(2) + "元 -> " + DATA.kpi.postPrice.toFixed(2) + "元");
+    setText("kpi-change", "单价 " + pct(DATA.kpi.priceChange) + "，销量 " + pct(DATA.kpi.qtyChange));
+    setText("week-note", DATA.meta.incompleteWeekNote);
+
+    const chartFont = { color: "#374151", fontFamily: "-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif" };
+    function axisStyle() {
+      return {
+        axisLine: { lineStyle: { color: "#d1d5db" } },
+        axisTick: { show: false },
+        axisLabel: { color: "#6b7280", hideOverlap: true },
+        splitLine: { lineStyle: { color: "#eef0f3" } },
+      };
+    }
+    function baseOption(extra) {
+      return Object.assign({
+        color: products.map(p => p.color),
+        textStyle: chartFont,
+        grid: { left: 48, right: 24, top: 58, bottom: 42, containLabel: true },
+        legend: { top: 8, icon: "roundRect", itemWidth: 10, itemHeight: 10, textStyle: { color: "#4b5563" } },
+        tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtMoney.format(value) },
+      }, extra);
+    }
+
+    const qtyChart = echarts.init(document.getElementById("chart-qty"));
+    qtyChart.setOption(baseOption({
+      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtInt.format(value) },
+      xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "包" }, axisStyle()),
+      series: products.map(p => ({ name: p.short, type: "line", data: DATA.daily[p.id].qty, smooth: false, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })).concat([{
+        name: "合计", type: "line", data: DATA.daily.total.qty, smooth: false, symbol: "none",
+        lineStyle: { width: 2, color: "#111827", type: "dashed" }, itemStyle: { color: "#111827" }, z: 1,
+      }]),
+    }));
+
+    const salesChart = echarts.init(document.getElementById("chart-sales"));
+    salesChart.setOption(baseOption({
+      xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "元" }, axisStyle()),
+      series: products.map(p => ({ name: p.short, type: "line", data: DATA.daily[p.id].sales, smooth: false, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, areaStyle: { opacity: 0.04 }, emphasis: { focus: "series" } })),
+    }));
+
+    const priceChart = echarts.init(document.getElementById("chart-price"));
+    priceChart.setOption(baseOption({
+      xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "元/包" }, axisStyle()),
+      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : value.toFixed(2) + " 元" },
+      series: products.map(p => ({ name: p.short, type: "line", data: DATA.daily[p.id].price, smooth: false, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })).concat([{
+        name: "合计单价", type: "line", data: DATA.daily.total.price, smooth: false, symbol: "none",
+        lineStyle: { width: 2.5, color: "#111827", type: "dashed" }, itemStyle: { color: "#111827" },
+      }]),
+    }));
+
+    const weeklyChart = echarts.init(document.getElementById("chart-weekly-psd"));
+    weeklyChart.setOption(baseOption({
+      xAxis: Object.assign({ type: "category", data: DATA.weeks.map(w => w.label) }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "PSD" }, axisStyle()),
+      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : Number(value).toFixed(3) },
+      series: products.map(p => ({ name: p.short, type: "bar", barMaxWidth: 16, itemStyle: { color: p.color, borderRadius: [4,4,0,0] }, data: DATA.weeks.map(w => w.items[p.id].psd) })),
+    }));
+    const elasticityChart = echarts.init(document.getElementById("chart-elasticity"));
+    elasticityChart.setOption(baseOption({
+      legend: { top: 8, data: ["销量变化", "单价变化"] },
+      xAxis: Object.assign({ type: "category", data: DATA.elasticity.map(d => d.short) }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "变化率", axisLabel: { color: "#6b7280", formatter: value => (value * 100).toFixed(0) + "%" } }, axisStyle()),
+      tooltip: { trigger: "axis", confine: true, formatter: params => params.map(p => p.marker + p.seriesName + ": " + pct(p.value)).join("<br>") },
+      series: [
+        { name: "销量变化", type: "bar", barMaxWidth: 24, itemStyle: { color: "#16a34a", borderRadius: [4,4,0,0] }, data: DATA.elasticity.map(d => d.qtyChange) },
+        { name: "单价变化", type: "bar", barMaxWidth: 24, itemStyle: { color: "#dc2626", borderRadius: [4,4,0,0] }, data: DATA.elasticity.map(d => d.priceChange) },
+      ],
+    }));
+
+    const rankValues = DATA.summary.map(d => d.qty);
+    const rankChart = echarts.init(document.getElementById("chart-rank"));
+    rankChart.setOption({
+      textStyle: chartFont,
+      grid: { left: 78, right: 42, top: 16, bottom: 24, containLabel: true },
+      xAxis: Object.assign({ type: "value" }, axisStyle()),
+      yAxis: Object.assign({ type: "category", data: DATA.summary.map(d => d.short), axisLabel: { color: "#374151", fontWeight: 650 } }, axisStyle(), { splitLine: { show: false } }),
+      tooltip: { confine: true, formatter: params => params[0].name + "<br>累计销量：" + fmtInt.format(params[0].value) + " 包" },
+      series: [{
+        type: "bar",
+        barMaxWidth: 20,
+        data: DATA.summary.map(d => {
+          const sorted = Array.from(new Set(rankValues)).sort((a,b) => b-a);
+          const rank = sorted.indexOf(d.qty);
+          const opacities = [0.86, 0.66, 0.48, 0.34];
+          const opacity = rank === 0 ? 1 : (opacities[Math.min(rank - 1, 3)] || 0.34);
+          return { value: d.qty, itemStyle: { color: rank === 0 ? "#16a34a" : "rgba(17,24,39," + opacity + ")", borderRadius: [0,4,4,0] } };
+        }),
+        label: { show: true, position: "right", color: "#374151", formatter: p => fmtInt.format(p.value) },
+      }],
+    });
+
+    const tierChart = echarts.init(document.getElementById("chart-tier"));
+    tierChart.setOption(baseOption({
+      legend: { top: 8, data: ["降价前 PSD", "降价后 PSD"] },
+      xAxis: Object.assign({ type: "category", data: DATA.tiers.map(d => d.tier) }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "PSD" }, axisStyle()),
+      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : Number(value).toFixed(3) },
+      series: [
+        { name: "降价前 PSD", type: "bar", barMaxWidth: 22, itemStyle: { color: "#9ca3af", borderRadius: [4,4,0,0] }, data: DATA.tiers.map(d => d.prePsd) },
+        { name: "降价后 PSD", type: "bar", barMaxWidth: 22, itemStyle: { color: "#16a34a", borderRadius: [4,4,0,0] }, data: DATA.tiers.map(d => d.postPsd) },
+      ],
+    }));
+
+    function tableHtml(headers, rows) {
+      return "<thead><tr>" + headers.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" +
+        rows.map(row => "<tr>" + row.map(cell => "<td>" + (cell === null || cell === undefined || cell === "" ? "--" : cell) + "</td>").join("") + "</tr>").join("") + "</tbody>";
+    }
+
+    document.getElementById("tier-table").innerHTML = tableHtml(
+      ["层级", "门店数", "降价前 PSD", "降价后 PSD", "变化"],
+      DATA.tiers.map(t => [t.tier, t.stores, t.prePsd === null ? "--" : t.prePsd.toFixed(3), t.postPsd === null ? "--" : t.postPsd.toFixed(3), "<span class=\"" + (t.uplift >= 0 ? "good" : "bad") + "\">" + pct(t.uplift) + "</span>"])
+    );
+
+    document.getElementById("summary-table").innerHTML = tableHtml(
+      ["SKU", "累计销量", "累计销额", "成交单价", "动销门店", "降价首周销量变化", "价格弹性"],
+      DATA.elasticity.map(e => {
+        const s = DATA.summary.find(x => x.id === e.id);
+        return [s.name, fmtInt.format(s.qty), "¥" + fmtMoney.format(s.sales), "¥" + s.price.toFixed(2), s.stores, "<span class=\"" + (e.qtyChange >= 0 ? "good" : "bad") + "\">" + pct(e.qtyChange) + "</span>", e.elasticity === null ? "--" : e.elasticity.toFixed(2)];
+      })
+    );
+
+    const dailyHeaders = ["日期"].concat(products.flatMap(p => [p.short + "销量", p.short + "销额"])).concat(["合计销量", "合计销额"]);
+    document.getElementById("daily-table").innerHTML = tableHtml(
+      dailyHeaders,
+      DATA.table.map(row => [row.date].concat(products.flatMap(p => [fmtInt.format(row.items[p.id].qty), "¥" + fmtMoney.format(row.items[p.id].sales)])).concat([fmtInt.format(row.totalQty), "¥" + fmtMoney.format(row.totalSales)]))
+    );
+
+    window.addEventListener("resize", () => {
+      [qtyChart, salesChart, priceChart, weeklyChart, elasticityChart, rankChart, tierChart].forEach(chart => chart.resize());
+    });
+  </script>
+</body>
+</html>
