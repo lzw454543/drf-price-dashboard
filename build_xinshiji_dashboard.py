@@ -457,8 +457,9 @@ HTML_TEMPLATE = r'''<!doctype html>
     .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; min-width:0; }
     .panel-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px; }
     .panel-head span { color:var(--muted); font-size:12px; white-space:nowrap; }
-    .wide { grid-column:span 7; }
-    .half { grid-column:span 5; }
+    .wide { grid-column:span 8; }
+    .half { grid-column:span 6; }
+    .narrow { grid-column:span 4; }
     .full { grid-column:span 12; }
     .chart { width:100%; height:340px; }
     .chart.short { height:310px; }
@@ -488,7 +489,7 @@ HTML_TEMPLATE = r'''<!doctype html>
     .month-filter { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; color:var(--muted); font-size:12px; }
     .month-filter label { display:inline-flex; align-items:center; gap:3px; padding:4px 8px; border:1px solid #e5e7eb; border-radius:999px; background:#fff; color:#374151; cursor:pointer; }
     .month-filter input { margin:0; }
-    @media (max-width:1100px) { .topbar { flex-direction:column; } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .wide,.half { grid-column:span 12; } }
+    @media (max-width:1100px) { .topbar { flex-direction:column; } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .wide,.half,.narrow { grid-column:span 12; } }
     @media (max-width:640px) { .topbar,main { padding-left:16px; padding-right:16px; } .kpis { grid-template-columns:1fr; } .panel-head { flex-direction:column; } .chart { height:280px; } .kpi-value { font-size:24px; } }
   </style>
   <script src="echarts.min.js"></script>
@@ -514,8 +515,8 @@ __NAV__
     <div class="section-title">每日销量、销额与单价走势</div>
     <section class="grid">
       <article class="panel wide"><div class="panel-head"><h2>每日销量走势</h2><span>7/27 起，按 SKU 汇总</span></div><div id="chart-qty" class="chart"></div></article>
-      <article class="panel half"><div class="panel-head"><h2>每日销额走势</h2><span>销售收入合计</span></div><div id="chart-sales" class="chart"></div></article>
-      <article class="panel wide"><div class="panel-head"><h2>每日单价走势</h2><span>每日销售收入 / 销售数量</span></div><div id="chart-price" class="chart"></div></article>
+      <article class="panel narrow"><div class="panel-head"><h2>每日销额走势</h2><span>销售收入合计</span></div><div id="chart-sales" class="chart"></div></article>
+      <article class="panel full"><div class="panel-head"><h2>每日单价走势</h2><span>每日销售收入 / 销售数量</span></div><div id="chart-price" class="chart"></div></article>
     </section>
 
     <div class="section-title">完整周长期走势（4月-8月）</div>
@@ -530,9 +531,9 @@ __NAV__
     <div class="section-title">完整周对比与门店分层</div>
     <section class="grid">
       <article class="panel wide"><div class="panel-head"><h2>完整周均销量与单价变化</h2><span>7/27 后完整周均值 vs 4-6 月完整周均值</span></div><div id="chart-elasticity" class="chart short"></div></article>
-      <article class="panel half"><div class="panel-head"><h2>门店分层 PSD 对比</h2><span>按降价前单店日销量分层</span></div><div id="chart-tier" class="chart short"></div></article>
+      <article class="panel narrow"><div class="panel-head"><h2>门店分层 PSD 对比</h2><span>按降价前单店日销量分层</span></div><div id="chart-tier" class="chart short"></div></article>
       <article class="panel wide"><div class="panel-head"><h2>SKU 月份对比</h2><div class="metric-toggle" id="month-metric"></div></div><div id="chart-sku-month" class="chart short"></div></article>
-      <article class="panel half"><div class="panel-head"><h2>分层明细</h2><span>四个目标 SKU 合计口径</span></div><div class="table-wrap"><table id="tier-table"></table></div></article>
+      <article class="panel narrow"><div class="panel-head"><h2>分层明细</h2><span>四个目标 SKU 合计口径</span></div><div class="table-wrap"><table id="tier-table"></table></div></article>
       <article class="panel full"><div class="panel-head"><h2>SKU 汇总表</h2><div class="month-filter"><label><input type="checkbox" name="summary-month" value="4" checked>4月</label><label><input type="checkbox" name="summary-month" value="5" checked>5月</label><label><input type="checkbox" name="summary-month" value="6" checked>6月</label><label><input type="checkbox" name="summary-month" value="7" checked>7月</label><label><input type="checkbox" name="summary-month" value="8" checked>8月</label></div></div><div class="table-wrap"><table id="summary-table"></table></div></article>
       <article class="panel full"><div class="panel-head"><h2>每日销量与销额明细</h2><span>每个 SKU 分别汇总</span></div><div class="table-wrap"><table id="daily-table"></table></div><div class="note" id="week-note"></div></article>
     </section>
@@ -678,6 +679,10 @@ HTML_TEMPLATE += r'''
         const sales = selectedProducts().reduce((sum,p) => sum + row.items[p.id].sales, 0);
         return [row.date].concat(selectedProducts().flatMap(p => [fmtInt.format(row.items[p.id].qty), "\u00a5" + fmtMoney.format(row.items[p.id].sales)])).concat([fmtInt.format(qty), "\u00a5" + fmtMoney.format(sales)]);
       }));
+    }
+    function tableHtml(headers, rows) {
+      return "<thead><tr>" + headers.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" +
+        rows.map(row => "<tr>" + row.map(cell => "<td>" + (cell === null || cell === undefined || cell === "" ? "--" : cell) + "</td>").join("") + "</tr>").join("") + "</tbody>";
     }
     function renderAll() { renderKpis(); renderCharts(); renderTables(); }
     document.querySelectorAll("input[name=summary-month]").forEach(input => input.addEventListener("change", renderTables));
