@@ -117,6 +117,20 @@
   </style>
 </head>
 <body>
+<!-- dashboard-nav:start -->
+  <style>
+    .dashboard-nav { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 10px 28px; background: rgba(255,255,255,.94); border-bottom: 1px solid #e5e7eb; backdrop-filter: blur(8px); }
+    .dashboard-nav .brand { color: #6b7280; font-weight: 750; margin-right: 6px; }
+    .dashboard-nav a { padding: 7px 12px; border-radius: 6px; color: #374151; text-decoration: none; font-size: 13px; font-weight: 700; }
+    .dashboard-nav a.active { background: #111827; color: #fff; }
+    @media (max-width: 640px) { .dashboard-nav { padding-left: 16px; padding-right: 16px; overflow-x: auto; } }
+  </style>
+  <nav class="dashboard-nav">
+    <span class="brand">销售看板</span>
+    <a class="active" href="index.html">大润发 70g 价格测试</a>
+    <a class="" href="yonghui.html">永辉 112g 促销分析</a>
+  </nav>
+  <!-- dashboard-nav:end -->
   <header class="topbar">
     <div>
       <h1>大润发 70g 玉米片价格测试看板</h1>
