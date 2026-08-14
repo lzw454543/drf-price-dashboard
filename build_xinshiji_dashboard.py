@@ -443,7 +443,7 @@ HTML_TEMPLATE = r'''<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>新世纪 70g 玉米片降价分析看板</title>
+  <title>大单品相关测试看板</title>
   <style>
     :root { --bg:#f5f6f8; --panel:#fff; --border:#e5e7eb; --text:#111827; --muted:#6b7280; --green:#16a34a; --red:#dc2626; --blue:#2563eb; --amber:#d97706; --teal:#0f766e; }
     * { box-sizing: border-box; }
