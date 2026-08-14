@@ -475,11 +475,19 @@ def nav_block(active: str) -> str:
     xj_class = "active" if active == "xinshiji" else ""
     return f'''<!-- dashboard-nav:start -->
   <style>
-    .dashboard-nav {{ position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 10px 28px; background: rgba(255,255,255,.94); border-bottom: 1px solid #e5e7eb; backdrop-filter: blur(8px); }}
-    .dashboard-nav .brand {{ color: #6b7280; font-weight: 750; margin-right: 6px; white-space: nowrap; }}
-    .dashboard-nav a {{ padding: 7px 12px; border-radius: 6px; color: #374151; text-decoration: none; font-size: 13px; font-weight: 700; white-space: nowrap; }}
-    .dashboard-nav a.active {{ background: #111827; color: #fff; }}
-    @media (max-width: 640px) {{ .dashboard-nav {{ padding-left: 16px; padding-right: 16px; overflow-x: auto; }} }}
+    .dashboard-nav {{ position: fixed; top: 0; left: 0; bottom: 0; z-index: 30; display: flex; flex-direction: column; gap: 4px; width: 168px; padding: 24px 12px; background: #0f172a; border-right: 1px solid #1e293b; overflow-y: auto; }}
+    .dashboard-nav .brand {{ color: #94a3b8; font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; padding: 0 10px 14px; margin-bottom: 8px; border-bottom: 1px solid #1e293b; white-space: nowrap; }}
+    .dashboard-nav a {{ display: block; padding: 10px 12px; border-radius: 6px; color: #cbd5e1; text-decoration: none; font-size: 13px; font-weight: 700; border-left: 3px solid transparent; white-space: nowrap; }}
+    .dashboard-nav a:hover {{ background: rgba(255,255,255,.06); color: #fff; }}
+    .dashboard-nav a.active {{ background: rgba(22,163,74,.15); color: #4ade80; border-left-color: #16a34a; }}
+    @media (min-width: 769px) {{ body {{ margin-left: 168px; }} }}
+    @media (max-width: 768px) {{
+      .dashboard-nav {{ position: sticky; top: 0; flex-direction: row; align-items: center; width: auto; bottom: auto; padding: 10px 16px; gap: 8px; overflow-x: auto; border-right: 0; border-bottom: 1px solid #e5e7eb; background: rgba(255,255,255,.96); backdrop-filter: blur(8px); }}
+      .dashboard-nav .brand {{ border: 0; padding: 0; margin: 0 6px 0 0; font-size: 13px; color: #6b7280; letter-spacing: 0; text-transform: none; }}
+      .dashboard-nav a {{ border-left: 0; padding: 7px 12px; color: #374151; }}
+      .dashboard-nav a.active {{ background: #111827; color: #fff; border-left: 0; }}
+      .dashboard-nav a:hover {{ background: #f3f4f6; color: #111827; }}
+    }}
   </style>
   <nav class="dashboard-nav">
     <span class="brand">销售看板</span>
