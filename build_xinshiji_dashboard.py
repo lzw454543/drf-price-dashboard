@@ -211,29 +211,42 @@ def product_period_metrics(part: pd.DataFrame) -> tuple[float, float, int, float
     return qty, sales, stores, price
 
 
-def elasticity_payload(daily: pd.DataFrame, baseline: pd.DataFrame) -> list[dict]:
-    post_week = daily[(daily["销售日期"] >= START) & (daily["销售日期"] <= POST_WEEK_END)].copy()
+def elasticity_payload(weeks: list[dict]) -> list[dict]:
+    baseline_weeks = [w for w in weeks if pd.Timestamp(w["start"]) < pd.Timestamp("2026-07-01")]
+    post_weeks = [w for w in weeks if pd.Timestamp(w["start"]) >= START]
     rows = []
     for product in PRODUCTS:
-        pre = baseline[baseline["条码"].eq(product["barcode"])]
-        post = post_week[post_week["条码"].eq(product["barcode"])]
-        pre_qty, pre_sales, pre_stores, pre_price = product_period_metrics(pre)
-        post_qty, post_sales, post_stores, post_price = product_period_metrics(post)
-        qty_change = post_qty / pre_qty - 1 if pre_qty else None
+        pre_values = [w["items"][product["id"]] for w in baseline_weeks]
+        post_values = [w["items"][product["id"]] for w in post_weeks]
+        pre_qty_total = sum(v["qty"] for v in pre_values)
+        post_qty_total = sum(v["qty"] for v in post_values)
+        pre_sales_total = sum(v["sales"] for v in pre_values)
+        post_sales_total = sum(v["sales"] for v in post_values)
+        pre_qty = pre_qty_total / len(pre_values) if pre_values else None
+        post_qty = post_qty_total / len(post_values) if post_values else None
+        pre_sales = pre_sales_total / len(pre_values) if pre_values else None
+        post_sales = post_sales_total / len(post_values) if post_values else None
+        pre_price = pre_sales_total / pre_qty_total if pre_qty_total else None
+        post_price = post_sales_total / post_qty_total if post_qty_total else None
+        pre_psd = sum(v["psd"] or 0 for v in pre_values) / len(pre_values) if pre_values else None
+        post_psd = sum(v["psd"] or 0 for v in post_values) / len(post_values) if post_values else None
+        qty_change = post_qty / pre_qty - 1 if pre_qty and post_qty else None
         price_change = post_price / pre_price - 1 if pre_price and post_price else None
         elasticity = qty_change / price_change if qty_change is not None and price_change not in (None, 0) else None
         rows.append({
             "id": product["id"],
             "short": product["short"],
             "color": product["color"],
-            "preQty": int(round(pre_qty)),
-            "postQty": int(round(post_qty)),
+            "preQty": round_or_none(pre_qty, 1),
+            "postQty": round_or_none(post_qty, 1),
             "preSales": round_or_none(pre_sales, 2),
             "postSales": round_or_none(post_sales, 2),
-            "preStores": pre_stores,
-            "postStores": post_stores,
+            "preStores": round_or_none(sum(v["stores"] for v in pre_values) / len(pre_values), 1) if pre_values else None,
+            "postStores": round_or_none(sum(v["stores"] for v in post_values) / len(post_values), 1) if post_values else None,
             "prePrice": round_or_none(pre_price, 2),
             "postPrice": round_or_none(post_price, 2),
+            "prePsd": round_or_none(pre_psd, 3),
+            "postPsd": round_or_none(post_psd, 3),
             "qtyChange": round_or_none(qty_change, 4),
             "priceChange": round_or_none(price_change, 4),
             "elasticity": round_or_none(elasticity, 3),
@@ -267,22 +280,48 @@ def tier_payload(daily: pd.DataFrame, baseline: pd.DataFrame) -> list[dict]:
     return rows
 
 
-def summary_payload(daily: pd.DataFrame) -> list[dict]:
+def monthly_summary_payload(full: pd.DataFrame, daily: pd.DataFrame) -> list[dict]:
+    date_col = full.columns[4]
+    store_col = full.columns[5]
+    barcode_col = full.columns[7]
+    qty_col = full.columns[9]
+    revenue_col = full.columns[11]
+
+    historical = full[full[date_col].isna()].copy()
+    historical = historical[["_month", store_col, barcode_col, qty_col, revenue_col]].rename(columns={"_month": "month"})
+    daily_part = daily.copy()
+    daily_part["month"] = daily_part[date_col].dt.month
+    daily_part = daily_part[["month", store_col, barcode_col, qty_col, revenue_col]]
+    monthly_data = pd.concat([historical, daily_part], ignore_index=True)
+    monthly_data = monthly_data[monthly_data["month"].between(4, 8)]
+
     rows = []
-    for product in PRODUCTS:
-        sku = daily[daily["条码"].eq(product["barcode"])]
-        qty, sales, stores, price = product_period_metrics(sku)
-        rows.append({
-            "id": product["id"],
-            "name": product["name"],
-            "short": product["short"],
-            "color": product["color"],
+    for month in sorted(monthly_data["month"].unique()):
+        part = monthly_data[monthly_data["month"].eq(month)]
+        items = {}
+        for product in PRODUCTS:
+            sku = part[part[barcode_col].eq(product["barcode"])]
+            qty = float(sku[qty_col].sum())
+            sales = float(sku[revenue_col].sum())
+            stores = int(sku[store_col].nunique())
+            items[product["id"]] = {
+                "qty": int(round(qty)),
+                "sales": round_or_none(sales, 2),
+                "stores": stores,
+                "storeCodes": sorted(sku[store_col].dropna().astype(str).unique().tolist()),
+                "price": round_or_none(sales / qty if qty else None, 2),
+            }
+        qty = float(part[qty_col].sum())
+        sales = float(part[revenue_col].sum())
+        stores = int(part[store_col].nunique())
+        items["total"] = {
             "qty": int(round(qty)),
             "sales": round_or_none(sales, 2),
             "stores": stores,
-            "price": round_or_none(price, 2),
-        })
-    return sorted(rows, key=lambda row: row["qty"], reverse=True)
+            "price": round_or_none(sales / qty if qty else None, 2),
+        }
+        rows.append({"month": int(month), "label": f"{int(month)}\u6708", "items": items})
+    return rows
 
 
 def table_payload(daily: pd.DataFrame) -> list[dict]:
@@ -306,35 +345,46 @@ def table_payload(daily: pd.DataFrame) -> list[dict]:
 
 def build_data() -> dict:
     full, daily, baseline, _ = load_data()
+    date_col = full.columns[4]
     dates, daily_metrics = aggregate_daily(daily)
     weeks = weekly_payload(full, daily)
-    elasticity = elasticity_payload(daily, baseline)
+    elasticity = elasticity_payload(weeks)
     tiers = tier_payload(daily, baseline)
-    summary = summary_payload(daily)
+    monthly_summary = monthly_summary_payload(full, daily)
+    table = table_payload(daily)
     table = table_payload(daily)
 
     total_qty, total_sales, total_stores, total_price = product_period_metrics(daily)
-    pre_qty, pre_sales, _, pre_price = product_period_metrics(baseline)
-    post_week = daily[(daily["销售日期"] >= START) & (daily["销售日期"] <= POST_WEEK_END)]
-    post_qty, post_sales, _, post_price = product_period_metrics(post_week)
-    qty_change = post_qty / pre_qty - 1 if pre_qty else None
+    baseline_weeks = [w for w in weeks if pd.Timestamp(w["start"]) < pd.Timestamp("2026-07-01")]
+    post_weeks = [w for w in weeks if pd.Timestamp(w["start"]) >= START]
+    pre_qty = sum(w["items"]["total"]["qty"] for w in baseline_weeks) / len(baseline_weeks)
+    post_qty = sum(w["items"]["total"]["qty"] for w in post_weeks) / len(post_weeks)
+    pre_sales = sum(w["items"]["total"]["sales"] for w in baseline_weeks) / len(baseline_weeks)
+    post_sales = sum(w["items"]["total"]["sales"] for w in post_weeks) / len(post_weeks)
+    pre_qty_total = sum(w["items"]["total"]["qty"] for w in baseline_weeks)
+    post_qty_total = sum(w["items"]["total"]["qty"] for w in post_weeks)
+    pre_sales_total = sum(w["items"]["total"]["sales"] for w in baseline_weeks)
+    post_sales_total = sum(w["items"]["total"]["sales"] for w in post_weeks)
+    pre_price = pre_sales_total / pre_qty_total if pre_qty_total else None
+    post_price = post_sales_total / post_qty_total if post_qty_total else None
+    qty_change = post_qty / pre_qty - 1 if pre_qty and post_qty else None
     price_change = post_price / pre_price - 1 if pre_price and post_price else None
     elasticity_value = qty_change / price_change if qty_change is not None and price_change not in (None, 0) else None
 
     return {
         "meta": {
             "start": START.strftime("%Y-%m-%d"),
-            "last": daily["销售日期"].max().strftime("%Y-%m-%d"),
+            "last": daily[date_col].max().strftime("%Y-%m-%d"),
             "generatedAt": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
-            "baselineRange": f"{BASELINE_START.month}/{BASELINE_START.day}-{BASELINE_END.month}/{BASELINE_END.day}",
-            "postWeekRange": f"{START.month}/{START.day}-{POST_WEEK_END.month}/{POST_WEEK_END.day}",
-            "incompleteWeekNote": "周度走势纳入 2026 年 4 月以来的完整自然周，跨月周已合并；数据截止日所在的未满周自动剔除。",
+            "baselineRange": f"4-6\u6708\u5b8c\u6574\u5468\u5747\u503c\uff08{len(baseline_weeks)}\u5468\uff09",
+            "postWeekRange": f"7/27\u540e\u5b8c\u6574\u5468\u5747\u503c\uff08{len(post_weeks)}\u5468\uff09",
+            "incompleteWeekNote": "\u5468\u5ea6\u8d70\u52bf\u7eb3\u5165 2026 \u5e74 4 \u6708\u4ee5\u6765\u7684\u5b8c\u6574\u81ea\u7136\u5468\uff0c\u8de8\u6708\u5468\u5df2\u5408\u5e76\uff1b\u6570\u636e\u622a\u6b62\u65e5\u6240\u5728\u7684\u672a\u6ee1\u5468\u81ea\u52a8\u5254\u9664\u3002",
         },
         "products": [{"id": p["id"], "name": p["name"], "short": p["short"], "color": p["color"]} for p in PRODUCTS],
         "dates": dates,
         "daily": daily_metrics,
         "weeks": weeks,
-        "summary": summary,
+        "monthlySummary": monthly_summary,
         "elasticity": elasticity,
         "tiers": tiers,
         "table": table,
@@ -345,6 +395,10 @@ def build_data() -> dict:
             "totalPrice": round_or_none(total_price, 2),
             "prePrice": round_or_none(pre_price, 2),
             "postPrice": round_or_none(post_price, 2),
+            "preWeeklyQty": round_or_none(pre_qty, 1),
+            "postWeeklyQty": round_or_none(post_qty, 1),
+            "preWeeklySales": round_or_none(pre_sales, 2),
+            "postWeeklySales": round_or_none(post_sales, 2),
             "qtyChange": round_or_none(qty_change, 4),
             "priceChange": round_or_none(price_change, 4),
             "elasticity": round_or_none(elasticity_value, 3),
@@ -414,6 +468,9 @@ HTML_TEMPLATE = r'''<!doctype html>
     .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:999px; background:#f3f4f6; color:#374151; font-size:12px; font-weight:700; }
     .good { color:var(--green); }
     .bad { color:var(--red); }
+    .month-filter { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; color:var(--muted); font-size:12px; }
+    .month-filter label { display:inline-flex; align-items:center; gap:3px; padding:4px 8px; border:1px solid #e5e7eb; border-radius:999px; background:#fff; color:#374151; cursor:pointer; }
+    .month-filter input { margin:0; }
     @media (max-width:1100px) { .topbar { flex-direction:column; } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .wide,.half { grid-column:span 12; } }
     @media (max-width:640px) { .topbar,main { padding-left:16px; padding-right:16px; } .kpis { grid-template-columns:1fr; } .panel-head { flex-direction:column; } .chart { height:280px; } .kpi-value { font-size:24px; } }
   </style>
@@ -455,11 +512,10 @@ __NAV__
 
     <div class="section-title">降价效果与门店分层</div>
     <section class="grid">
-      <article class="panel wide"><div class="panel-head"><h2>降价首周销量与价格变化</h2><span>对比降价前完整周</span></div><div id="chart-elasticity" class="chart short"></div></article>
-      <article class="panel half"><div class="panel-head"><h2>SKU 累计销量排行</h2><span>最大值绿色强调</span></div><div id="chart-rank" class="chart short"></div></article>
+      <article class="panel wide"><div class="panel-head"><h2>降价后周均销量与价格变化</h2><span>7/27 后完整周均值 vs 4-6 月完整周均值</span></div><div id="chart-elasticity" class="chart short"></div></article>
       <article class="panel half"><div class="panel-head"><h2>门店分层 PSD 对比</h2><span>按降价前单店日销量分层</span></div><div id="chart-tier" class="chart short"></div></article>
       <article class="panel half"><div class="panel-head"><h2>分层明细</h2><span>合计为四个 SKU 口径</span></div><div class="table-wrap"><table id="tier-table"></table></div></article>
-      <article class="panel full"><div class="panel-head"><h2>SKU 汇总表</h2><span>7/27 后累计口径</span></div><div class="table-wrap"><table id="summary-table"></table></div></article>
+      <article class="panel full"><div class="panel-head"><h2>SKU 汇总表</h2><div class="month-filter"><label><input type="checkbox" name="summary-month" value="4" checked>4月</label><label><input type="checkbox" name="summary-month" value="5" checked>5月</label><label><input type="checkbox" name="summary-month" value="6" checked>6月</label><label><input type="checkbox" name="summary-month" value="7" checked>7月</label><label><input type="checkbox" name="summary-month" value="8" checked>8月</label></div></div><div class="table-wrap"><table id="summary-table"></table></div></article>
       <article class="panel full"><div class="panel-head"><h2>每日销量与销额明细</h2><span>每个 SKU 分别汇总</span></div><div class="table-wrap"><table id="daily-table"></table></div><div class="note" id="week-note"></div></article>
     </section>
   </main>
@@ -553,7 +609,7 @@ HTML_TEMPLATE += r'''
     const weeklyQtyChart = echarts.init(document.getElementById("chart-weekly-qty"));
     weeklyQtyChart.setOption(baseOption({
       xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "?" }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "\u5305" }, axisStyle()),
       tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtInt.format(value) },
       series: weeklySeries("qty"),
     }));
@@ -561,15 +617,15 @@ HTML_TEMPLATE += r'''
     const weeklySalesChart = echarts.init(document.getElementById("chart-weekly-sales"));
     weeklySalesChart.setOption(baseOption({
       xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "?" }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "\u5143" }, axisStyle()),
       series: weeklySeries("sales", { areaStyle: { opacity: 0.04 } }),
     }));
 
     const weeklyPriceChart = echarts.init(document.getElementById("chart-weekly-price"));
     weeklyPriceChart.setOption(baseOption({
       xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "?/?" }, axisStyle()),
-      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : Number(value).toFixed(2) + " ?" },
+      yAxis: Object.assign({ type: "value", name: "\u5143/\u5305" }, axisStyle()),
+      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : Number(value).toFixed(2) + " \u5143" },
       series: weeklySeries("price"),
     }));
 
@@ -584,7 +640,7 @@ HTML_TEMPLATE += r'''
     const weeklyStoresChart = echarts.init(document.getElementById("chart-weekly-stores"));
     weeklyStoresChart.setOption(baseOption({
       xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "??" }, axisStyle()),
+      yAxis: Object.assign({ type: "value", name: "\u95e8\u5e97" }, axisStyle()),
       tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtInt.format(value) },
       series: products.map(p => ({ name: p.short, type: "line", data: DATA.weeks.map(w => w.items[p.id].stores), smooth: false, symbol: "circle", symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })),
     }));
@@ -600,28 +656,6 @@ HTML_TEMPLATE += r'''
         { name: "单价变化", type: "bar", barMaxWidth: 24, itemStyle: { color: "#dc2626", borderRadius: [4,4,0,0] }, data: DATA.elasticity.map(d => d.priceChange) },
       ],
     }));
-
-    const rankValues = DATA.summary.map(d => d.qty);
-    const rankChart = echarts.init(document.getElementById("chart-rank"));
-    rankChart.setOption({
-      textStyle: chartFont,
-      grid: { left: 78, right: 42, top: 16, bottom: 24, containLabel: true },
-      xAxis: Object.assign({ type: "value" }, axisStyle()),
-      yAxis: Object.assign({ type: "category", data: DATA.summary.map(d => d.short), axisLabel: { color: "#374151", fontWeight: 650 } }, axisStyle(), { splitLine: { show: false } }),
-      tooltip: { confine: true, formatter: params => params[0].name + "<br>累计销量：" + fmtInt.format(params[0].value) + " 包" },
-      series: [{
-        type: "bar",
-        barMaxWidth: 20,
-        data: DATA.summary.map(d => {
-          const sorted = Array.from(new Set(rankValues)).sort((a,b) => b-a);
-          const rank = sorted.indexOf(d.qty);
-          const opacities = [0.86, 0.66, 0.48, 0.34];
-          const opacity = rank === 0 ? 1 : (opacities[Math.min(rank - 1, 3)] || 0.34);
-          return { value: d.qty, itemStyle: { color: rank === 0 ? "#16a34a" : "rgba(17,24,39," + opacity + ")", borderRadius: [0,4,4,0] } };
-        }),
-        label: { show: true, position: "right", color: "#374151", formatter: p => fmtInt.format(p.value) },
-      }],
-    });
 
     const tierChart = echarts.init(document.getElementById("chart-tier"));
     tierChart.setOption(baseOption({
@@ -645,13 +679,35 @@ HTML_TEMPLATE += r'''
       DATA.tiers.map(t => [t.tier, t.stores, t.prePsd === null ? "--" : t.prePsd.toFixed(3), t.postPsd === null ? "--" : t.postPsd.toFixed(3), "<span class=\"" + (t.uplift >= 0 ? "good" : "bad") + "\">" + pct(t.uplift) + "</span>"])
     );
 
-    document.getElementById("summary-table").innerHTML = tableHtml(
-      ["SKU", "累计销量", "累计销额", "成交单价", "动销门店", "降价首周销量变化", "价格弹性"],
-      DATA.elasticity.map(e => {
-        const s = DATA.summary.find(x => x.id === e.id);
-        return [s.name, fmtInt.format(s.qty), "¥" + fmtMoney.format(s.sales), "¥" + s.price.toFixed(2), s.stores, "<span class=\"" + (e.qtyChange >= 0 ? "good" : "bad") + "\">" + pct(e.qtyChange) + "</span>", e.elasticity === null ? "--" : e.elasticity.toFixed(2)];
-      })
-    );
+    function renderSummaryTable() {
+      const selected = Array.from(document.querySelectorAll("input[name=summary-month]:checked")).map(x => Number(x.value));
+      const monthRows = DATA.monthlySummary.filter(row => selected.includes(row.month));
+      const rows = products.map(product => {
+        let qty = 0;
+        let sales = 0;
+        const stores = new Set();
+        monthRows.forEach(row => {
+          const item = row.items[product.id];
+          qty += item.qty;
+          sales += item.sales;
+          (item.storeCodes || []).forEach(code => stores.add(code));
+        });
+        const price = qty ? sales / qty : null;
+        return [
+          product.name,
+          monthRows.map(() => "").join("") + fmtInt.format(qty),
+          "\u00a5" + fmtMoney.format(sales),
+          price === null ? "--" : "\u00a5" + price.toFixed(2),
+          stores.size,
+        ];
+      });
+      document.getElementById("summary-table").innerHTML = tableHtml(
+        ["SKU", "\u6240\u9009\u6708\u4efd\u9500\u91cf", "\u6240\u9009\u6708\u4efd\u9500\u989d", "\u6210\u4ea4\u5355\u4ef7", "\u52a8\u9500\u95e8\u5e97"],
+        rows
+      );
+    }
+    document.querySelectorAll("input[name=summary-month]").forEach(input => input.addEventListener("change", renderSummaryTable));
+    renderSummaryTable();
 
     const dailyHeaders = ["日期"].concat(products.flatMap(p => [p.short + "销量", p.short + "销额"])).concat(["合计销量", "合计销额"]);
     document.getElementById("daily-table").innerHTML = tableHtml(
@@ -660,7 +716,7 @@ HTML_TEMPLATE += r'''
     );
 
     window.addEventListener("resize", () => {
-      [qtyChart, salesChart, priceChart, weeklyQtyChart, weeklySalesChart, weeklyPriceChart, weeklyPsdChart, weeklyStoresChart, elasticityChart, rankChart, tierChart].forEach(chart => chart.resize());
+      [qtyChart, salesChart, priceChart, weeklyQtyChart, weeklySalesChart, weeklyPriceChart, weeklyPsdChart, weeklyStoresChart, elasticityChart, tierChart].forEach(chart => chart.resize());
     });
   </script>
 </body>
