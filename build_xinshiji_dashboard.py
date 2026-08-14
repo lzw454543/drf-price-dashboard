@@ -495,7 +495,7 @@ __NAV__
       <article class="kpi"><div class="kpi-label">7/27 后累计销量</div><div class="kpi-value" id="kpi-qty">--</div><div class="kpi-sub"><span id="kpi-stores"></span><span class="neutral">包</span></div></article>
       <article class="kpi"><div class="kpi-label">7/27 后累计销额</div><div class="kpi-value" id="kpi-sales">--</div><div class="kpi-sub"><span id="kpi-date-range"></span><span class="neutral">元</span></div></article>
       <article class="kpi"><div class="kpi-label">累计成交单价</div><div class="kpi-value" id="kpi-price">--</div><div class="kpi-sub"><span id="kpi-price-move"></span><span class="neutral">销额/销量</span></div></article>
-      <article class="kpi"><div class="kpi-label">??????????3????</div><div class="kpi-value" id="kpi-elasticity">--</div><div class="kpi-sub"><span id="kpi-change"></span><span class="neutral">销量/价格</span></div></article>
+      <article class="kpi"><div class="kpi-label" id="elasticity-label"></div><div class="kpi-value" id="kpi-elasticity">--</div><div class="kpi-sub"><span id="kpi-change"></span><span class="neutral" id="elasticity-unit"></span></div></article>
     </section>
 
     <div class="section-title">每日价格弹性走势</div>
@@ -550,6 +550,8 @@ HTML_TEMPLATE += r'''
     setText("kpi-elasticity", DATA.kpi.elasticity.toFixed(2));
     setText("kpi-stores", "覆盖 " + DATA.kpi.totalStores + " 家门店");
     setText("kpi-date-range", DATA.meta.start + " 至 " + DATA.meta.last);
+    setText("elasticity-label", "降价后周均价格弹性（3品均值）");
+    setText("elasticity-unit", "周均销量/价格");
     setText("kpi-price-move", DATA.kpi.prePrice.toFixed(2) + "元 -> " + DATA.kpi.postPrice.toFixed(2) + "元");
     setText("kpi-change", "单价 " + pct(DATA.kpi.priceChange) + "，销量 " + pct(DATA.kpi.qtyChange));
     setText("week-note", DATA.meta.incompleteWeekNote);
