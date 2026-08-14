@@ -62,26 +62,51 @@ def week_label(start: pd.Timestamp) -> str:
     return f"{start.month}/{start.day}-{end.month}/{end.day}"
 
 
-def load_data() -> tuple[pd.DataFrame, set[str]]:
+def load_data() -> tuple[pd.DataFrame, set[tuple[str, str, pd.Timestamp]]]:
     df = pd.read_excel(SOURCE, sheet_name=1)
     df.columns = [str(c).strip() for c in df.columns]
-    df["日期"] = pd.to_datetime(df["日期"], errors="coerce").dt.normalize()
-    df = df[df["日期"].notna()].copy()
-    df["商品名称"] = df["商品名称"].astype(str).str.strip()
-    df = df[df["商品名称"].isin([p["name"] for p in PRODUCTS])].copy()
-    for col in ["销售数量", "最终销售金额(销售金额+优惠券金额)", "销售金额", "促销扣款", "优惠券金额"]:
-        if col in df.columns:
-            df[col] = clean_num(df[col])
-    df["门店编码"] = df["门店编码"].map(clean_store_code)
-    df["门店名称"] = df["门店名称"].fillna("未命名门店").astype(str).str.strip()
+    date_col = df.columns[10]
+    product_col = df.columns[6]
+    store_code_col = df.columns[7]
+    store_name_col = df.columns[8]
+    qty_col = df.columns[11]
+    final_col = df.columns[15]
 
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce").dt.normalize()
+    df = df[df[date_col].notna()].copy()
+    df[product_col] = df[product_col].astype(str).str.strip()
+    df = df[df[product_col].isin([p["name"] for p in PRODUCTS])].copy()
+    for col in [qty_col, final_col, df.columns[12], df.columns[13], df.columns[14]]:
+        df[col] = clean_num(df[col])
+    df[store_code_col] = df[store_code_col].map(clean_store_code)
+    df[store_name_col] = df[store_name_col].fillna("?????").astype(str).str.strip()
+
+    # The exported workbook leaves formula results blank, so reconstruct the
+    # exact promotion flag from the lookup sheet: store + product + date.
     promo_raw = pd.read_excel(SOURCE, sheet_name=3, header=1)
     promo_raw.columns = [str(c).strip() for c in promo_raw.columns]
-    promo_codes = set()
-    if "编码" in promo_raw.columns and "是否活动门店标注" in promo_raw.columns:
-        flagged = promo_raw[promo_raw["是否活动门店标注"].astype(str).str.strip().eq("是")].copy()
-        promo_codes = {clean_store_code(v) for v in flagged["编码"] if clean_store_code(v)}
-    return df, promo_codes
+    promo_flag_col = promo_raw.columns[-1]
+    flag_series = promo_raw[promo_flag_col].dropna().astype(str).str.strip()
+    promo_keys = set()
+    if not flag_series.empty:
+        yes = flag_series.iloc[0]
+        flagged = promo_raw[promo_raw[promo_flag_col].astype(str).str.strip().eq(yes)].copy()
+        flagged_code_col = flagged.columns[1]
+        flagged_product_col = flagged.columns[3]
+        flagged_date_col = flagged.columns[4]
+        flagged[flagged_date_col] = pd.to_datetime(flagged[flagged_date_col], errors="coerce").dt.normalize()
+        for _, row in flagged.iterrows():
+            code = clean_store_code(row[flagged_code_col])
+            product = str(row[flagged_product_col]).strip()
+            event_date = row[flagged_date_col]
+            if code and pd.notna(event_date):
+                promo_keys.add((code, product, event_date))
+
+    df["is_promo"] = df.apply(
+        lambda row: (row[store_code_col], str(row[product_col]).strip(), row[date_col]) in promo_keys,
+        axis=1,
+    )
+    return df, promo_keys
 
 
 def daily_payload(part: pd.DataFrame, full_dates: pd.DatetimeIndex, present_dates: set[pd.Timestamp]) -> dict:
@@ -138,75 +163,136 @@ def product_summary(product: dict, part: pd.DataFrame) -> dict:
         "price": round_or_none(sales / qty if qty else None, 2),
     }
 
-def promo_analysis(target: pd.DataFrame, promo_codes: set[str], present_dates: set[pd.Timestamp]) -> dict:
-    promo_dates = pd.date_range(PROMO_START, PROMO_END, freq="D")
-    promo_dates = promo_dates[promo_dates.isin(present_dates)]
-    in_promo = target["日期"].isin(promo_dates)
-    is_promo_store = target["门店编码"].isin(promo_codes)
-    promo_group = target[in_promo & is_promo_store].copy()
-    other_group = target[in_promo & ~is_promo_store].copy()
+def promo_analysis(target: pd.DataFrame, promo_keys: set[tuple[str, str, pd.Timestamp]], present_dates: set[pd.Timestamp]) -> dict:
+    date_col = target.columns[10]
+    product_col = target.columns[6]
+    store_code_col = target.columns[7]
+    qty_col = target.columns[11]
+    sales_col = target.columns[15]
 
-    def daily_group(part: pd.DataFrame, assigned_count: int | None) -> list[dict]:
-        g = part.groupby("日期").agg(
-            qty=("销售数量", "sum"),
-            sales=("最终销售金额(销售金额+优惠券金额)", "sum"),
-            stores=("门店编码", "nunique"),
-        ).reindex(promo_dates).fillna(0)
-        rows = []
-        for date, row in g.iterrows():
-            qty = float(row["qty"])
-            stores = int(row["stores"])
-            rows.append({
-                "date": date.strftime("%m-%d"),
-                "qty": int(round(qty)),
-                "stores": stores,
-                "sales": round_or_none(row["sales"], 2),
-                "psdActive": round_or_none(qty / stores if stores else None, 3),
-                "psdAssigned": round_or_none(qty / assigned_count if assigned_count else None, 3),
-            })
-        return rows
+    target_product = str(target[product_col].iloc[0]).strip()
+    flag_keys = {key for key in promo_keys if key[1] == target_product}
+    if not flag_keys:
+        return {
+            "promoStoreCount": 0, "promoStoreDays": 0, "promoStart": None, "promoEnd": None,
+            "promoDates": [], "promoDaily": [], "otherDaily": [], "verticalDaily": [],
+            "summary": {}, "storeTiers": [], "periodTiers": [],
+        }
 
-    promo_daily = daily_group(promo_group, len(promo_codes))
-    other_daily = daily_group(other_group, None)
+    promo_rows = target[target["is_promo"]].copy()
+    promo_dates = sorted({key[2] for key in flag_keys})
+    promo_date_set = set(promo_dates)
+    all_promo_stores = sorted({key[0] for key in flag_keys})
+    promo_store_sets = {}
+    for store, _product, date in flag_keys:
+        promo_store_sets.setdefault(date, set()).add(store)
+    promo_store_days = sum(len(stores) for stores in promo_store_sets.values())
+
+    target_dates = pd.date_range(target[date_col].min(), target[date_col].max(), freq="D")
+    promo_pivot = (
+        promo_rows.pivot_table(index=store_code_col, columns=date_col, values=qty_col, aggfunc="sum", fill_value=0)
+        .reindex(all_promo_stores)
+        .reindex(columns=promo_dates, fill_value=0)
+    )
+    promo_sales_pivot = (
+        promo_rows.pivot_table(index=store_code_col, columns=date_col, values=sales_col, aggfunc="sum", fill_value=0)
+        .reindex(all_promo_stores)
+        .reindex(columns=promo_dates, fill_value=0)
+    )
+    all_pivot = (
+        target.pivot_table(index=store_code_col, columns=date_col, values=qty_col, aggfunc="sum", fill_value=0)
+        .reindex(all_promo_stores)
+        .reindex(columns=target_dates, fill_value=0)
+    )
+    flag_df = pd.DataFrame(
+        [(store, date, 1) for store, _product, date in flag_keys],
+        columns=[store_code_col, date_col, "flag"],
+    )
+    promo_flag_pivot = (
+        flag_df.pivot_table(index=store_code_col, columns=date_col, values="flag", aggfunc="max", fill_value=0)
+        .reindex(all_promo_stores)
+        .reindex(columns=target_dates, fill_value=0)
+        .gt(0)
+    )
+
+    promo_daily = []
+    for date in promo_dates:
+        qty = float(promo_pivot[date].sum())
+        stores = int((promo_pivot[date] > 0).sum())
+        assigned = len(promo_store_sets[date])
+        promo_daily.append({
+            "date": date.strftime("%m-%d"),
+            "assignedCount": assigned,
+            "qty": int(round(qty)),
+            "sales": round_or_none(float(promo_sales_pivot[date].sum()), 2),
+            "stores": stores,
+            "psdActive": round_or_none(qty / stores if stores else None, 3),
+            "psdAssigned": round_or_none(qty / assigned if assigned else None, 3),
+        })
+
+    other_group = target[target[date_col].isin(promo_date_set) & ~target["is_promo"]].copy()
+    other_grouped = other_group.groupby(date_col).agg(
+        qty=(qty_col, "sum"), sales=(sales_col, "sum"), stores=(store_code_col, "nunique")
+    ).reindex(promo_dates).fillna(0)
+    other_daily = []
+    for date, row in other_grouped.iterrows():
+        qty = float(row["qty"])
+        stores = int(row["stores"])
+        other_daily.append({
+            "date": date.strftime("%m-%d"),
+            "assignedCount": None,
+            "qty": int(round(qty)),
+            "sales": round_or_none(float(row["sales"]), 2),
+            "stores": stores,
+            "psdActive": round_or_none(qty / stores if stores else None, 3),
+            "psdAssigned": None,
+        })
+
     promo_qty = sum(r["qty"] for r in promo_daily)
     other_qty = sum(r["qty"] for r in other_daily)
-    promo_active_avg = sum(r["stores"] for r in promo_daily) / len(promo_dates)
-    other_active_avg = sum(r["stores"] for r in other_daily) / len(promo_dates)
-    promo_psd_active = promo_qty / promo_active_avg if promo_active_avg else None
-    other_psd_active = other_qty / other_active_avg if other_active_avg else None
-    promo_psd_assigned = promo_qty / len(promo_codes) / len(promo_dates) if promo_codes else None
-
-    baseline_map = {}
-    promo_set = set(promo_dates)
-    for date in promo_dates:
-        baseline_map[date] = [d for d in pd.date_range(target["日期"].min(), target["日期"].max(), freq="D") if d.weekday() == date.weekday() and d not in promo_set]
-    baseline_dates = sorted({d for dates in baseline_map.values() for d in dates})
-    pivot = target[is_promo_store].pivot_table(
-        index="门店编码", columns="日期", values="销售数量", aggfunc="sum", fill_value=0
-    ).reindex(sorted(promo_codes), fill_value=0)
-    promo_store_avg = pivot.reindex(columns=promo_dates, fill_value=0).sum(axis=1) / len(promo_dates)
-    baseline_store_avg = pivot.reindex(columns=baseline_dates, fill_value=0).sum(axis=1) / len(baseline_dates)
+    promo_store_days_active = sum(r["stores"] for r in promo_daily)
+    other_store_days_active = sum(r["stores"] for r in other_daily)
+    promo_psd_assigned = promo_qty / promo_store_days if promo_store_days else None
+    promo_psd_active = promo_qty / promo_store_days_active if promo_store_days_active else None
+    other_psd_active = other_qty / other_store_days_active if other_store_days_active else None
 
     vertical_daily = []
     for date in promo_dates:
-        base_vals = []
-        for base_date in baseline_map[date]:
-            base_vals.append(float(pivot[base_date].sum()) / len(promo_codes) if base_date in pivot.columns else 0.0)
-        promo_val = float(pivot[date].sum()) / len(promo_codes) if date in pivot.columns else 0.0
-        base_val = sum(base_vals) / len(base_vals) if base_vals else None
+        stores_for_date = sorted(promo_store_sets[date])
+        same_weekday_dates = [d for d in target_dates if d.weekday() == date.weekday()]
+        baseline_total = 0.0
+        baseline_denominator = 0
+        for base_date in same_weekday_dates:
+            store_mask = ~promo_flag_pivot.loc[stores_for_date, base_date]
+            baseline_total += float(all_pivot.loc[stores_for_date, base_date][store_mask].sum())
+            baseline_denominator += int(store_mask.sum())
+        promo_value = float(all_pivot.loc[stores_for_date, date].sum()) / len(stores_for_date)
+        baseline_value = baseline_total / baseline_denominator if baseline_denominator else None
         vertical_daily.append({
             "date": date.strftime("%m-%d"),
-            "promo": round_or_none(promo_val, 3),
-            "baseline": round_or_none(base_val, 3),
-            "delta": round_or_none(promo_val / base_val - 1 if base_val else None, 3),
+            "promo": round_or_none(promo_value, 3),
+            "baseline": round_or_none(baseline_value, 3),
+            "delta": round_or_none(promo_value / baseline_value - 1 if baseline_value else None, 3),
         })
+
+    store_tier_inputs = []
+    for store in all_promo_stores:
+        store_promo_dates = sorted(promo_rows[promo_rows[store_code_col].eq(store)][date_col].unique())
+        weekdays = {d.weekday() for d in store_promo_dates}
+        baseline_dates = [
+            d for d in target_dates
+            if d.weekday() in weekdays and not bool(promo_flag_pivot.loc[store, d])
+        ]
+        baseline_avg = float(all_pivot.loc[store, baseline_dates].sum()) / len(baseline_dates) if baseline_dates else 0.0
+        promo_avg = float(all_pivot.loc[store, store_promo_dates].sum()) / len(store_promo_dates) if store_promo_dates else 0.0
+        store_tier_inputs.append((store, baseline_avg, promo_avg))
 
     tier_rows = []
     for label, _, _, _ in TIERS:
-        mask = baseline_store_avg.map(tier_label).eq(label)
-        count = int(mask.sum())
-        base = float(baseline_store_avg[mask].mean()) if count else 0.0
-        promo_avg = float(promo_store_avg[mask].mean()) if count else 0.0
+        selected = [item for item in store_tier_inputs if tier_label(item[1]) == label]
+        count = len(selected)
+        base = sum(item[1] for item in selected) / count if count else 0.0
+        promo_avg = sum(item[2] for item in selected) / count if count else 0.0
         tier_rows.append({
             "tier": label,
             "stores": count,
@@ -215,22 +301,30 @@ def promo_analysis(target: pd.DataFrame, promo_codes: set[str], present_dates: s
             "uplift": round_or_none(promo_avg / base - 1 if base else None, 3),
         })
 
-    other_pivot = other_group.pivot_table(index="门店编码", columns="日期", values="销售数量", aggfunc="sum", fill_value=0)
-    promo_period_avg = pivot.reindex(columns=promo_dates, fill_value=0).sum(axis=1) / len(promo_dates)
-    other_period_avg = other_pivot.reindex(columns=promo_dates, fill_value=0).sum(axis=1) / len(promo_dates)
+    promo_period_avgs = [item[2] for item in store_tier_inputs]
+    other_pivot = other_group.pivot_table(
+        index=store_code_col, columns=date_col, values=qty_col, aggfunc="sum", fill_value=0
+    )
+    other_period_avgs = []
+    for _, row in other_pivot.iterrows():
+        active_days = int((row > 0).sum())
+        if active_days:
+            other_period_avgs.append(float(row.sum()) / active_days)
     period_tiers = []
     for label, _, _, _ in TIERS:
         period_tiers.append({
             "tier": label,
-            "promoStores": int(promo_period_avg.map(tier_label).eq(label).sum()),
-            "otherStores": int(other_period_avg.map(tier_label).eq(label).sum()),
+            "promoStores": sum(1 for v in promo_period_avgs if tier_label(v) == label),
+            "otherStores": sum(1 for v in other_period_avgs if tier_label(v) == label),
         })
 
-    baseline_psd = float(baseline_store_avg.mean())
+    baseline_psd = sum(item[1] for item in store_tier_inputs) / len(store_tier_inputs) if store_tier_inputs else None
     return {
-        "promoStoreCount": len(promo_codes),
-        "promoStart": PROMO_START.strftime("%Y-%m-%d"),
-        "promoEnd": PROMO_END.strftime("%Y-%m-%d"),
+        "promoStoreCount": len(all_promo_stores),
+        "promoStoreDays": promo_store_days,
+        "promoStart": min(promo_dates).strftime("%Y-%m-%d"),
+        "promoEnd": max(promo_dates).strftime("%Y-%m-%d"),
+        "promoDates": [d.strftime("%Y-%m-%d") for d in promo_dates],
         "promoDaily": promo_daily,
         "otherDaily": other_daily,
         "verticalDaily": vertical_daily,
@@ -239,8 +333,8 @@ def promo_analysis(target: pd.DataFrame, promo_codes: set[str], present_dates: s
             "otherQty": int(other_qty),
             "promoDailyQty": round_or_none(promo_qty / len(promo_dates), 1),
             "otherDailyQty": round_or_none(other_qty / len(promo_dates), 1),
-            "promoActiveStores": round_or_none(promo_active_avg, 1),
-            "otherActiveStores": round_or_none(other_active_avg, 1),
+            "promoActiveStores": round_or_none(promo_store_days_active / len(promo_dates), 1),
+            "otherActiveStores": round_or_none(other_store_days_active / len(promo_dates), 1),
             "promoPsdActive": round_or_none(promo_psd_active, 3),
             "otherPsdActive": round_or_none(other_psd_active, 3),
             "promoPsdAssigned": round_or_none(promo_psd_assigned, 3),
@@ -266,7 +360,7 @@ def opportunity_stores(df: pd.DataFrame, products: dict[str, dict], present_date
     ]
 
 def build_data() -> dict:
-    df, promo_codes = load_data()
+    df, promo_keys = load_data()
     product_map = {p["id"]: p for p in PRODUCTS}
     full_dates = pd.date_range(df["日期"].min(), df["日期"].max(), freq="D")
     present_dates = set(df["日期"].dropna().unique())
@@ -346,7 +440,7 @@ def build_data() -> dict:
         "defaultMonths": [months[-2]["id"]] if len(months) >= 2 else [months[-1]["id"]],
         "products": products_payload,
         "productOrder": [p["id"] for p in PRODUCTS],
-        "promo": promo_analysis(target, promo_codes, present_dates),
+        "promo": promo_analysis(target, promo_keys, present_dates),
         "latestMix": latest_mix,
         "storeMonthly": monthly_rows,
         "opportunity": opportunity_stores(df, product_map, present_dates),
@@ -468,7 +562,7 @@ __NAV__
 
     <div class="section-title">一、每日销量、销额、单价走势</div>
     <section class="grid">
-      <article class="panel wide"><div class="panel-head"><h2>每日销售数量</h2><span>按商品名称分别汇总</span></div><div id="chart-qty" class="chart"></div></article>
+      <article class="panel wide"><div class="panel-head"><h2>横向对比：已标记 vs 未标记</h2><span>仅巴旦木玉米片；按“推广促销=是”标记</span></div><div id="chart-promo-compare" class="chart short"></div></article>
       <article class="panel half"><div class="panel-head"><h2>最近完整周销额结构</h2><span id="last-week"></span></div><div id="chart-mix" class="chart"></div></article>
       <article class="panel wide"><div class="panel-head"><h2>每日最终销额</h2><span>销售金额 + 优惠券金额</span></div><div id="chart-sales" class="chart"></div></article>
       <article class="panel half"><div class="panel-head"><h2>每日成交单价</h2><span>最终销额 / 销售数量</span></div><div id="chart-price" class="chart"></div></article>
@@ -529,7 +623,7 @@ __NAV__
         return {
           name: p.short, type:'line', data:p.daily[metric], smooth:true, showSymbol:false, connectNulls:false,
           lineStyle:{width: id==='butter'?2.6:1.9, color:p.color}, itemStyle:{color:p.color}, emphasis:{focus:'series'},
-          markLine: id==='butter' ? {symbol:'none', label:{formatter:'推广期'}, lineStyle:{color:'#dc2626',type:'dashed'}, data:[{xAxis: DATA.promo.promoStart}, {xAxis: DATA.promo.promoEnd}]} : undefined
+          markLine: id==='butter' ? {symbol:'none', label:{formatter:'推广期'}, lineStyle:{color:'#dc2626',type:'dashed'}, data: DATA.promo.promoDates.map(d => ({xAxis: d}))} : undefined
         };
       });
       return {
