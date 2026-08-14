@@ -28,7 +28,7 @@ TIER_ORDER = ["0-1", "1-2", "2-5", "5+"]
 NAV_ITEMS = [
     ("index.html", "大润发 70g 价格测试", "drf"),
     ("yonghui.html", "永辉 112g 促销分析", "yonghui"),
-    ("xinshiji.html", "新世纪 70g 价格弹性", "xinshiji"),
+    ("xinshiji.html", "新世纪 70g 降价分析", "xinshiji"),
 ]
 
 
@@ -435,7 +435,7 @@ HTML_TEMPLATE = r'''<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>新世纪 70g 玉米片价格弹性看板</title>
+  <title>新世纪 70g 玉米片降价分析看板</title>
   <style>
     :root { --bg:#f5f6f8; --panel:#fff; --border:#e5e7eb; --text:#111827; --muted:#6b7280; --green:#16a34a; --red:#dc2626; --blue:#2563eb; --amber:#d97706; --teal:#0f766e; }
     * { box-sizing: border-box; }
@@ -445,8 +445,8 @@ HTML_TEMPLATE = r'''<!doctype html>
     h2 { margin:0; font-size:15px; }
     p { margin:0; color:var(--muted); }
     main { padding:0 28px 34px; }
-    .kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:16px; }
-    .kpi { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; }
+    .kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-bottom:16px; }
+    .kpi { position:relative; background:var(--panel); border:1px solid var(--border); border-top:3px solid #111827; border-radius:8px; padding:16px; box-shadow:0 1px 2px rgba(17,24,39,.04); }
     .kpi-label { color:var(--muted); font-size:13px; margin-bottom:10px; }
     .kpi-value { font-size:28px; font-weight:750; line-height:1.1; margin-bottom:8px; }
     .kpi-sub { color:var(--muted); font-size:12px; display:flex; justify-content:space-between; gap:8px; align-items:center; }
@@ -461,8 +461,21 @@ HTML_TEMPLATE = r'''<!doctype html>
     .half { grid-column:span 5; }
     .full { grid-column:span 12; }
     .chart { width:100%; height:340px; }
-    .chart.short { height:300px; }
-    .table-wrap { max-height:380px; overflow:auto; border:1px solid #eef0f3; border-radius:6px; }
+    .chart.short { height:310px; }
+    .sku-filter { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 14px; }
+    .sku-filter-label { color:var(--muted); font-size:12px; font-weight:700; margin-right:2px; }
+    .sku-filter label { display:inline-flex; align-items:center; gap:5px; padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; background:#fff; color:#374151; font-size:12px; font-weight:700; cursor:pointer; }
+    .sku-filter label.active { border-color:#111827; background:#111827; color:#fff; }
+    .sku-filter input { margin:0; accent-color:#16a34a; }
+    .kpi-note { margin-top:8px; color:var(--muted); font-size:12px; line-height:1.4; min-height:32px; }
+    .metric-toggle { display:inline-flex; gap:4px; padding:3px; background:#eef0f3; border-radius:8px; }
+    .metric-toggle button { border:0; background:transparent; padding:5px 10px; border-radius:6px; color:#374151; cursor:pointer; font-size:12px; font-weight:750; }
+    .metric-toggle button.active { background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+    .section-title { margin-top:18px; }
+    .panel { padding:14px; }
+    .panel-head { margin-bottom:8px; }
+    .chart { height:320px; }
+    .table-wrap { max-height:328px; overflow:auto; border:1px solid #eef0f3; border-radius:6px; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th,td { padding:9px 10px; border-bottom:1px solid #eef0f3; text-align:right; white-space:nowrap; }
     th:first-child,td:first-child { text-align:left; }
@@ -484,21 +497,21 @@ HTML_TEMPLATE = r'''<!doctype html>
 __NAV__
   <header class="topbar">
     <div>
-      <h1>新世纪 70g 玉米片价格弹性看板</h1>
+      <h1>新世纪 70g 玉米片降价分析看板</h1>
       <p id="meta"></p>
     </div>
     <span class="pill" id="data-state">每日更新</span>
   </header>
 
   <main>
+    <div class="sku-filter" id="sku-filter"><span class="sku-filter-label">SKU 对比</span></div>
     <section class="kpis">
-      <article class="kpi"><div class="kpi-label">7/27 后累计销量</div><div class="kpi-value" id="kpi-qty">--</div><div class="kpi-sub"><span id="kpi-stores"></span><span class="neutral">包</span></div></article>
-      <article class="kpi"><div class="kpi-label">7/27 后累计销额</div><div class="kpi-value" id="kpi-sales">--</div><div class="kpi-sub"><span id="kpi-date-range"></span><span class="neutral">元</span></div></article>
-      <article class="kpi"><div class="kpi-label">累计成交单价</div><div class="kpi-value" id="kpi-price">--</div><div class="kpi-sub"><span id="kpi-price-move"></span><span class="neutral">销额/销量</span></div></article>
-      <article class="kpi"><div class="kpi-label" id="elasticity-label"></div><div class="kpi-value" id="kpi-elasticity">--</div><div class="kpi-sub"><span id="kpi-change"></span><span class="neutral" id="elasticity-unit"></span></div></article>
+      <article class="kpi"><div class="kpi-label">7/27 后累计销量</div><div class="kpi-value" id="kpi-qty">--</div><div class="kpi-sub"><span id="kpi-stores"></span><span class="neutral">包</span></div><div class="kpi-note" id="kpi-qty-note">--</div></article>
+      <article class="kpi"><div class="kpi-label">7/27 后累计销额</div><div class="kpi-value" id="kpi-sales">--</div><div class="kpi-sub"><span id="kpi-date-range"></span><span class="neutral">元</span></div><div class="kpi-note" id="kpi-sales-note">--</div></article>
+      <article class="kpi"><div class="kpi-label">累计成交单价</div><div class="kpi-value" id="kpi-price">--</div><div class="kpi-sub"><span id="kpi-price-move"></span><span class="neutral">元/包</span></div><div class="kpi-note" id="kpi-price-note">4-6 月与 7/27 后完整周加权单价对比</div></article>
     </section>
 
-    <div class="section-title">每日价格弹性走势</div>
+    <div class="section-title">每日销量、销额与单价走势</div>
     <section class="grid">
       <article class="panel wide"><div class="panel-head"><h2>每日销量走势</h2><span>7/27 起，按 SKU 汇总</span></div><div id="chart-qty" class="chart"></div></article>
       <article class="panel half"><div class="panel-head"><h2>每日销额走势</h2><span>销售收入合计</span></div><div id="chart-sales" class="chart"></div></article>
@@ -514,11 +527,12 @@ __NAV__
       <article class="panel half"><div class="panel-head"><h2>完整周动销门店</h2><span>每周去重仓位数</span></div><div id="chart-weekly-stores" class="chart"></div></article>
     </section>
 
-    <div class="section-title">降价效果与门店分层</div>
+    <div class="section-title">完整周对比与门店分层</div>
     <section class="grid">
-      <article class="panel wide"><div class="panel-head"><h2>降价后周均销量与价格变化</h2><span>7/27 后完整周均值 vs 4-6 月完整周均值</span></div><div id="chart-elasticity" class="chart short"></div></article>
+      <article class="panel wide"><div class="panel-head"><h2>完整周均销量与单价变化</h2><span>7/27 后完整周均值 vs 4-6 月完整周均值</span></div><div id="chart-elasticity" class="chart short"></div></article>
       <article class="panel half"><div class="panel-head"><h2>门店分层 PSD 对比</h2><span>按降价前单店日销量分层</span></div><div id="chart-tier" class="chart short"></div></article>
-      <article class="panel half"><div class="panel-head"><h2>分层明细</h2><span>合计为四个 SKU 口径</span></div><div class="table-wrap"><table id="tier-table"></table></div></article>
+      <article class="panel wide"><div class="panel-head"><h2>SKU 月份对比</h2><div class="metric-toggle" id="month-metric"></div></div><div id="chart-sku-month" class="chart short"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>分层明细</h2><span>四个目标 SKU 合计口径</span></div><div class="table-wrap"><table id="tier-table"></table></div></article>
       <article class="panel full"><div class="panel-head"><h2>SKU 汇总表</h2><div class="month-filter"><label><input type="checkbox" name="summary-month" value="4" checked>4月</label><label><input type="checkbox" name="summary-month" value="5" checked>5月</label><label><input type="checkbox" name="summary-month" value="6" checked>6月</label><label><input type="checkbox" name="summary-month" value="7" checked>7月</label><label><input type="checkbox" name="summary-month" value="8" checked>8月</label></div></div><div class="table-wrap"><table id="summary-table"></table></div></article>
       <article class="panel full"><div class="panel-head"><h2>每日销量与销额明细</h2><span>每个 SKU 分别汇总</span></div><div class="table-wrap"><table id="daily-table"></table></div><div class="note" id="week-note"></div></article>
     </section>
@@ -535,194 +549,144 @@ HTML_TEMPLATE += r'''
     const fmtInt = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
     const fmtMoney = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+    function setText(id, text) { document.getElementById(id).textContent = text; }
+    function setHtml(id, html) { document.getElementById(id).innerHTML = html; }
+
+    setText("meta", "数据区间：" + DATA.meta.start + " 至 " + DATA.meta.last + "，生成时间：" + DATA.meta.generatedAt);
+    setText("data-state", "数据更新至 " + DATA.meta.last);
+    setText("week-note", DATA.meta.incompleteWeekNote);
+
+    let selectedProductIds = products.map(p => p.id);
+    let monthMetric = "qty";
+    function selectedProducts() { return products.filter(p => selectedProductIds.includes(p.id)); }
+    function sumArray(values) { return (values || []).reduce((acc, value) => acc + (value || 0), 0); }
     function pct(value) {
-      if (value === null || value === undefined) return "--";
+      if (value === null || value === undefined || Number.isNaN(value)) return "--";
       return (value > 0 ? "+" : "") + (value * 100).toFixed(1) + "%";
     }
 
-    function setText(id, text) { document.getElementById(id).textContent = text; }
-
-    setText("meta", "数据范围：" + DATA.meta.start + " 至 " + DATA.meta.last + "；生成时间：" + DATA.meta.generatedAt);
-    setText("data-state", "数据截止 " + DATA.meta.last);
-    setText("kpi-qty", fmtInt.format(DATA.kpi.totalQty));
-    setText("kpi-sales", "¥" + fmtMoney.format(DATA.kpi.totalSales));
-    setText("kpi-price", "¥" + DATA.kpi.totalPrice.toFixed(2));
-    setText("kpi-elasticity", DATA.kpi.elasticity.toFixed(2));
-    setText("kpi-stores", "覆盖 " + DATA.kpi.totalStores + " 家门店");
-    setText("kpi-date-range", DATA.meta.start + " 至 " + DATA.meta.last);
-    setText("elasticity-label", "降价后周均价格弹性（3品均值）");
-    setText("elasticity-unit", "周均销量/价格");
-    setText("kpi-price-move", DATA.kpi.prePrice.toFixed(2) + "元 -> " + DATA.kpi.postPrice.toFixed(2) + "元");
-    setText("kpi-change", "单价 " + pct(DATA.kpi.priceChange) + "，销量 " + pct(DATA.kpi.qtyChange));
-    setText("week-note", DATA.meta.incompleteWeekNote);
-
     const chartFont = { color: "#374151", fontFamily: "-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif" };
     function axisStyle() {
-      return {
-        axisLine: { lineStyle: { color: "#d1d5db" } },
-        axisTick: { show: false },
-        axisLabel: { color: "#6b7280", hideOverlap: true },
-        splitLine: { lineStyle: { color: "#eef0f3" } },
-      };
+      return { axisLine: { lineStyle: { color: "#d1d5db" } }, axisTick: { show: false }, axisLabel: { color: "#6b7280", hideOverlap: true }, splitLine: { lineStyle: { color: "#eef0f3" } } };
     }
-    function baseOption(extra) {
+    const charts = {};
+    function getChart(id) { if (!charts[id]) charts[id] = echarts.init(document.getElementById(id)); return charts[id]; }
+    function baseOption(sp, extra) {
       return Object.assign({
-        color: products.map(p => p.color),
-        textStyle: chartFont,
+        color: sp.map(p => p.color), textStyle: chartFont,
         grid: { left: 48, right: 24, top: 58, bottom: 42, containLabel: true },
         legend: { top: 8, icon: "roundRect", itemWidth: 10, itemHeight: 10, textStyle: { color: "#4b5563" } },
         tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtMoney.format(value) },
       }, extra);
     }
-
-    const qtyChart = echarts.init(document.getElementById("chart-qty"));
-    qtyChart.setOption(baseOption({
-      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtInt.format(value) },
-      xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "包" }, axisStyle()),
-      series: products.map(p => ({ name: p.short, type: "line", data: DATA.daily[p.id].qty, smooth: false, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })).concat([{
-        name: "合计", type: "line", data: DATA.daily.total.qty, smooth: false, symbol: "none",
-        lineStyle: { width: 2, color: "#111827", type: "dashed" }, itemStyle: { color: "#111827" }, z: 1,
-      }]),
-    }));
-
-    const salesChart = echarts.init(document.getElementById("chart-sales"));
-    salesChart.setOption(baseOption({
-      xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "元" }, axisStyle()),
-      series: products.map(p => ({ name: p.short, type: "line", data: DATA.daily[p.id].sales, smooth: false, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, areaStyle: { opacity: 0.04 }, emphasis: { focus: "series" } })),
-    }));
-
-    const priceChart = echarts.init(document.getElementById("chart-price"));
-    priceChart.setOption(baseOption({
-      xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "元/包" }, axisStyle()),
-      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : value.toFixed(2) + " 元" },
-      series: products.map(p => ({ name: p.short, type: "line", data: DATA.daily[p.id].price, smooth: false, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })).concat([{
-        name: "合计单价", type: "line", data: DATA.daily.total.price, smooth: false, symbol: "none",
-        lineStyle: { width: 2.5, color: "#111827", type: "dashed" }, itemStyle: { color: "#111827" },
-      }]),
-    }));
-
-    const weekLabels = DATA.weeks.map(w => w.label);
-    function weeklySeries(metric, options = {}) {
-      return products.map(p => ({
-        name: p.short, type: "line", data: DATA.weeks.map(w => w.items[p.id][metric]),
-        smooth: false, symbol: "circle", symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color },
-        emphasis: { focus: "series" }, ...options,
+    function selectedTotal(metric) {
+      const sp = selectedProducts();
+      return dates.map((_, index) => sp.reduce((sum, p) => sum + (DATA.daily[p.id][metric][index] || 0), 0));
+    }
+    function selectedTotalPrice() {
+      return dates.map((_, index) => {
+        const qty = selectedProducts().reduce((sum, p) => sum + (DATA.daily[p.id].qty[index] || 0), 0);
+        const sales = selectedProducts().reduce((sum, p) => sum + (DATA.daily[p.id].sales[index] || 0), 0);
+        return qty ? sales / qty : null;
+      });
+    }
+    function renderFilter() {
+      const wrap = document.getElementById("sku-filter");
+      wrap.innerHTML = '<span class="sku-filter-label">SKU 对比</span>' + products.map(p => `<label class="${selectedProductIds.includes(p.id) ? "active" : ""}"><input type="checkbox" value="${p.id}" ${selectedProductIds.includes(p.id) ? "checked" : ""}>${p.short}</label>`).join("");
+      wrap.querySelectorAll("input").forEach(input => input.addEventListener("change", () => {
+        const next = Array.from(wrap.querySelectorAll("input:checked")).map(x => x.value);
+        if (next.length) selectedProductIds = next;
+        else { input.checked = true; selectedProductIds = [input.value]; }
+        renderAll();
       }));
     }
-    const weeklyQtyChart = echarts.init(document.getElementById("chart-weekly-qty"));
-    weeklyQtyChart.setOption(baseOption({
-      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "\u5305" }, axisStyle()),
-      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtInt.format(value) },
-      series: weeklySeries("qty"),
-    }));
-
-    const weeklySalesChart = echarts.init(document.getElementById("chart-weekly-sales"));
-    weeklySalesChart.setOption(baseOption({
-      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "\u5143" }, axisStyle()),
-      series: weeklySeries("sales", { areaStyle: { opacity: 0.04 } }),
-    }));
-
-    const weeklyPriceChart = echarts.init(document.getElementById("chart-weekly-price"));
-    weeklyPriceChart.setOption(baseOption({
-      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "\u5143/\u5305" }, axisStyle()),
-      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : Number(value).toFixed(2) + " \u5143" },
-      series: weeklySeries("price"),
-    }));
-
-    const weeklyPsdChart = echarts.init(document.getElementById("chart-weekly-psd"));
-    weeklyPsdChart.setOption(baseOption({
-      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "PSD" }, axisStyle()),
-      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : Number(value).toFixed(3) },
-      series: weeklySeries("psd"),
-    }));
-
-    const weeklyStoresChart = echarts.init(document.getElementById("chart-weekly-stores"));
-    weeklyStoresChart.setOption(baseOption({
-      xAxis: Object.assign({ type: "category", data: weekLabels, axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "\u95e8\u5e97" }, axisStyle()),
-      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : fmtInt.format(value) },
-      series: products.map(p => ({ name: p.short, type: "line", data: DATA.weeks.map(w => w.items[p.id].stores), smooth: false, symbol: "circle", symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })),
-    }));
-
-    const elasticityChart = echarts.init(document.getElementById("chart-elasticity"));
-    elasticityChart.setOption(baseOption({
-      legend: { top: 8, data: ["销量变化", "单价变化"] },
-      xAxis: Object.assign({ type: "category", data: DATA.elasticity.map(d => d.short) }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "变化率", axisLabel: { color: "#6b7280", formatter: value => (value * 100).toFixed(0) + "%" } }, axisStyle()),
-      tooltip: { trigger: "axis", confine: true, formatter: params => params.map(p => p.marker + p.seriesName + ": " + pct(p.value)).join("<br>") },
-      series: [
-        { name: "销量变化", type: "bar", barMaxWidth: 24, itemStyle: { color: "#16a34a", borderRadius: [4,4,0,0] }, data: DATA.elasticity.map(d => d.qtyChange) },
-        { name: "单价变化", type: "bar", barMaxWidth: 24, itemStyle: { color: "#dc2626", borderRadius: [4,4,0,0] }, data: DATA.elasticity.map(d => d.priceChange) },
-      ],
-    }));
-
-    const tierChart = echarts.init(document.getElementById("chart-tier"));
-    tierChart.setOption(baseOption({
-      legend: { top: 8, data: ["降价前 PSD", "降价后 PSD"] },
-      xAxis: Object.assign({ type: "category", data: DATA.tiers.map(d => d.tier) }, axisStyle()),
-      yAxis: Object.assign({ type: "value", name: "PSD" }, axisStyle()),
-      tooltip: { trigger: "axis", confine: true, valueFormatter: value => value === null || value === undefined ? "--" : Number(value).toFixed(3) },
-      series: [
-        { name: "降价前 PSD", type: "bar", barMaxWidth: 22, itemStyle: { color: "#9ca3af", borderRadius: [4,4,0,0] }, data: DATA.tiers.map(d => d.prePsd) },
-        { name: "降价后 PSD", type: "bar", barMaxWidth: 22, itemStyle: { color: "#16a34a", borderRadius: [4,4,0,0] }, data: DATA.tiers.map(d => d.postPsd) },
-      ],
-    }));
-
-    function tableHtml(headers, rows) {
-      return "<thead><tr>" + headers.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" +
-        rows.map(row => "<tr>" + row.map(cell => "<td>" + (cell === null || cell === undefined || cell === "" ? "--" : cell) + "</td>").join("") + "</tr>").join("") + "</tbody>";
+    function renderMetricToggle() {
+      const wrap = document.getElementById("month-metric");
+      wrap.innerHTML = [["qty","销量"],["sales","销额"]].map(([value,label]) => `<button class="${monthMetric===value?"active":""}" data-value="${value}">${label}</button>`).join("");
+      wrap.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => { monthMetric = btn.dataset.value; renderMetricToggle(); renderCharts(); }));
     }
-
-    document.getElementById("tier-table").innerHTML = tableHtml(
-      ["层级", "门店数", "降价前 PSD", "降价后 PSD", "变化"],
-      DATA.tiers.map(t => [t.tier, t.stores, t.prePsd === null ? "--" : t.prePsd.toFixed(3), t.postPsd === null ? "--" : t.postPsd.toFixed(3), "<span class=\"" + (t.uplift >= 0 ? "good" : "bad") + "\">" + pct(t.uplift) + "</span>"])
-    );
-
-    function renderSummaryTable() {
+    function renderKpis() {
+      const sp = selectedProducts();
+      const compare = DATA.elasticity.filter(e => selectedProductIds.includes(e.id));
+      const count = compare.length || 1;
+      const qty = sp.reduce((sum, p) => sum + sumArray(DATA.daily[p.id].qty), 0);
+      const sales = sp.reduce((sum, p) => sum + sumArray(DATA.daily[p.id].sales), 0);
+      const avgPreQty = compare.reduce((sum, e) => sum + e.preQty, 0) / count;
+      const avgPostQty = compare.reduce((sum, e) => sum + e.postQty, 0) / count;
+      const avgPreSales = compare.reduce((sum, e) => sum + e.preSales, 0) / count;
+      const avgPostSales = compare.reduce((sum, e) => sum + e.postSales, 0) / count;
+      const preSalesTotal = compare.reduce((sum, e) => sum + e.preSales, 0);
+      const postSalesTotal = compare.reduce((sum, e) => sum + e.postSales, 0);
+      const preQtyTotal = compare.reduce((sum, e) => sum + e.preQty, 0);
+      const postQtyTotal = compare.reduce((sum, e) => sum + e.postQty, 0);
+      const prePrice = preQtyTotal ? preSalesTotal / preQtyTotal : null;
+      const postPrice = postQtyTotal ? postSalesTotal / postQtyTotal : null;
+      setText("kpi-qty", fmtInt.format(qty));
+      setText("kpi-sales", "\u00a5" + fmtMoney.format(sales));
+      setText("kpi-price", qty ? "\u00a5" + (sales / qty).toFixed(2) : "--");
+      setText("kpi-stores", "已选 " + sp.length + " 个 SKU");
+      setText("kpi-date-range", DATA.meta.start + " 至 " + DATA.meta.last);
+      setText("kpi-price-move", prePrice && postPrice ? prePrice.toFixed(2) + "元 -> " + postPrice.toFixed(2) + "元" : "--");
+      setHtml("kpi-qty-note", `周均销量增长 <strong>${pct(avgPostQty / avgPreQty - 1)}</strong>：${fmtInt.format(avgPostQty)}包 vs ${fmtInt.format(avgPreQty)}包，按${count}品平均`);
+      setHtml("kpi-sales-note", `周均销额增长 <strong>${pct(avgPostSales / avgPreSales - 1)}</strong>：\u00a5${fmtMoney.format(avgPostSales)} vs \u00a5${fmtMoney.format(avgPreSales)}，按${count}品平均`);
+      setText("kpi-price-note", prePrice && postPrice ? "4-6月 " + prePrice.toFixed(2) + "元 -> 7/27后 " + postPrice.toFixed(2) + "元，按选中 SKU 加权" : "--");
+    }
+    function renderCharts() {
+      const sp = selectedProducts();
+      const weekLabels = DATA.weeks.map(w => w.label);
+      getChart("chart-qty").setOption(baseOption(sp, {
+        tooltip: { trigger: "axis", confine: true, valueFormatter: v => v === null || v === undefined ? "--" : fmtInt.format(v) },
+        xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
+        yAxis: Object.assign({ type: "value", name: "销量(包)" }, axisStyle()),
+        series: sp.map(p => ({ name: p.short, type: "line", data: DATA.daily[p.id].qty, smooth: false, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })).concat([{ name: "合计", type: "line", data: selectedTotal("qty"), symbol: "none", lineStyle: { width: 2, color: "#111827", type: "dashed" }, itemStyle: { color: "#111827" } }]),
+      }), true);
+      getChart("chart-sales").setOption(baseOption(sp, {
+        xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
+        yAxis: Object.assign({ type: "value", name: "销额(元)" }, axisStyle()),
+        series: sp.map(p => ({ name: p.short, type: "line", data: DATA.daily[p.id].sales, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, areaStyle: { opacity: 0.04 }, emphasis: { focus: "series" } })),
+      }), true);
+      getChart("chart-price").setOption(baseOption(sp, {
+        xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
+        yAxis: Object.assign({ type: "value", name: "单价(元/包)" }, axisStyle()),
+        tooltip: { trigger: "axis", confine: true, valueFormatter: v => v === null || v === undefined ? "--" : Number(v).toFixed(2) + " 元" },
+        series: sp.map(p => ({ name: p.short, type: "line", data: DATA.daily[p.id].price, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })).concat([{ name: "合计单价", type: "line", data: selectedTotalPrice(), symbol: "none", lineStyle: { width: 2.5, color: "#111827", type: "dashed" }, itemStyle: { color: "#111827" } }]),
+      }), true);
+      function weeklySeries(metric, options = {}) { return sp.map(p => ({ name: p.short, type: "line", data: DATA.weeks.map(w => w.items[p.id][metric]), smooth: false, symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" }, ...options })); }
+      const weekAxis = { axisLabel: { color: "#6b7280", rotate: 35, hideOverlap: true } };
+      getChart("chart-weekly-qty").setOption(baseOption(sp, { xAxis: Object.assign({ type: "category", data: weekLabels }, axisStyle(), weekAxis), yAxis: Object.assign({ type: "value", name: "销量(包)" }, axisStyle()), tooltip: { trigger: "axis", confine: true, valueFormatter: v => v === null ? "--" : fmtInt.format(v) }, series: weeklySeries("qty") }), true);
+      getChart("chart-weekly-sales").setOption(baseOption(sp, { xAxis: Object.assign({ type: "category", data: weekLabels }, axisStyle(), weekAxis), yAxis: Object.assign({ type: "value", name: "销额(元)" }, axisStyle()), series: weeklySeries("sales", { areaStyle: { opacity: 0.04 } }) }), true);
+      getChart("chart-weekly-price").setOption(baseOption(sp, { xAxis: Object.assign({ type: "category", data: weekLabels }, axisStyle(), weekAxis), yAxis: Object.assign({ type: "value", name: "单价(元/包)" }, axisStyle()), tooltip: { trigger: "axis", confine: true, valueFormatter: v => v === null ? "--" : Number(v).toFixed(2) + " 元" }, series: weeklySeries("price") }), true);
+      getChart("chart-weekly-psd").setOption(baseOption(sp, { xAxis: Object.assign({ type: "category", data: weekLabels }, axisStyle(), weekAxis), yAxis: Object.assign({ type: "value", name: "PSD" }, axisStyle()), tooltip: { trigger: "axis", confine: true, valueFormatter: v => v === null ? "--" : Number(v).toFixed(3) }, series: weeklySeries("psd") }), true);
+      getChart("chart-weekly-stores").setOption(baseOption(sp, { xAxis: Object.assign({ type: "category", data: weekLabels }, axisStyle(), weekAxis), yAxis: Object.assign({ type: "value", name: "门店" }, axisStyle()), tooltip: { trigger: "axis", confine: true, valueFormatter: v => v === null ? "--" : fmtInt.format(v) }, series: sp.map(p => ({ name: p.short, type: "line", data: DATA.weeks.map(w => w.items[p.id].stores), symbolSize: 5, lineStyle: { width: 2 }, itemStyle: { color: p.color }, emphasis: { focus: "series" } })) }), true);
+      getChart("chart-elasticity").setOption(baseOption(sp, { legend: { top: 8, data: ["销量变化", "单价变化"] }, xAxis: Object.assign({ type: "category", data: DATA.elasticity.filter(e => selectedProductIds.includes(e.id)).map(d => d.short) }, axisStyle()), yAxis: Object.assign({ type: "value", name: "变化率", axisLabel: { color: "#6b7280", formatter: v => (v * 100).toFixed(0) + "%" } }, axisStyle()), tooltip: { trigger: "axis", confine: true, formatter: params => params.map(p => p.marker + p.seriesName + ": " + pct(p.value)).join("<br>") }, series: [{ name: "销量变化", type: "bar", barMaxWidth: 24, itemStyle: { color: "#16a34a", borderRadius: [4,4,0,0] }, data: DATA.elasticity.filter(e => selectedProductIds.includes(e.id)).map(d => d.qtyChange) }, { name: "单价变化", type: "bar", barMaxWidth: 24, itemStyle: { color: "#dc2626", borderRadius: [4,4,0,0] }, data: DATA.elasticity.filter(e => selectedProductIds.includes(e.id)).map(d => d.priceChange) }] }), true);
+      getChart("chart-tier").setOption(baseOption(sp, { legend: { top: 8, data: ["降价前 PSD", "降价后 PSD"] }, xAxis: Object.assign({ type: "category", data: DATA.tiers.map(d => d.tier) }, axisStyle()), yAxis: Object.assign({ type: "value", name: "PSD" }, axisStyle()), tooltip: { trigger: "axis", confine: true, valueFormatter: v => v === null ? "--" : Number(v).toFixed(3) }, series: [{ name: "降价前 PSD", type: "bar", barMaxWidth: 22, itemStyle: { color: "#9ca3af", borderRadius: [4,4,0,0] }, data: DATA.tiers.map(d => d.prePsd) }, { name: "降价后 PSD", type: "bar", barMaxWidth: 22, itemStyle: { color: "#16a34a", borderRadius: [4,4,0,0] }, data: DATA.tiers.map(d => d.postPsd) }] }), true);
+      getChart("chart-sku-month").setOption(baseOption(sp, { xAxis: Object.assign({ type: "category", data: DATA.monthlySummary.map(d => d.label) }, axisStyle()), yAxis: Object.assign({ type: "value", name: monthMetric === "qty" ? "销量(包)" : "销额(元)" }, axisStyle()), tooltip: { trigger: "axis", confine: true, valueFormatter: v => v === null ? "--" : monthMetric === "qty" ? fmtInt.format(v) : fmtMoney.format(v) }, series: sp.map(p => ({ name: p.short, type: "bar", barMaxWidth: 18, itemStyle: { color: p.color, borderRadius: [4,4,0,0] }, data: DATA.monthlySummary.map(row => row.items[p.id][monthMetric]) })) }), true);
+    }
+    function renderTables() {
+      document.getElementById("tier-table").innerHTML = tableHtml(["层级", "门店数", "降价前 PSD", "降价后 PSD", "变化"], DATA.tiers.map(t => [t.tier, t.stores, t.prePsd === null ? "--" : t.prePsd.toFixed(3), t.postPsd === null ? "--" : t.postPsd.toFixed(3), "<span class=\"" + (t.uplift >= 0 ? "good" : "bad") + "\">" + pct(t.uplift) + "</span>"]));
       const selected = Array.from(document.querySelectorAll("input[name=summary-month]:checked")).map(x => Number(x.value));
       const monthRows = DATA.monthlySummary.filter(row => selected.includes(row.month));
-      const rows = products.map(product => {
-        let qty = 0;
-        let sales = 0;
-        const stores = new Set();
-        monthRows.forEach(row => {
-          const item = row.items[product.id];
-          qty += item.qty;
-          sales += item.sales;
-          (item.storeCodes || []).forEach(code => stores.add(code));
-        });
+      document.getElementById("summary-table").innerHTML = tableHtml(["SKU", "所选月份销量", "所选月份销额", "成交单价", "动销门店"], selectedProducts().map(product => {
+        let qty = 0, sales = 0; const stores = new Set();
+        monthRows.forEach(row => { const item = row.items[product.id]; qty += item.qty; sales += item.sales; (item.storeCodes || []).forEach(code => stores.add(code)); });
         const price = qty ? sales / qty : null;
-        return [
-          product.name,
-          monthRows.map(() => "").join("") + fmtInt.format(qty),
-          "\u00a5" + fmtMoney.format(sales),
-          price === null ? "--" : "\u00a5" + price.toFixed(2),
-          stores.size,
-        ];
-      });
-      document.getElementById("summary-table").innerHTML = tableHtml(
-        ["SKU", "\u6240\u9009\u6708\u4efd\u9500\u91cf", "\u6240\u9009\u6708\u4efd\u9500\u989d", "\u6210\u4ea4\u5355\u4ef7", "\u52a8\u9500\u95e8\u5e97"],
-        rows
-      );
+        return [product.name, fmtInt.format(qty), "\u00a5" + fmtMoney.format(sales), price === null ? "--" : "\u00a5" + price.toFixed(2), stores.size];
+      }));
+      const dailyHeaders = ["日期"].concat(selectedProducts().flatMap(p => [p.short + "销量", p.short + "销额"])).concat(["合计销量", "合计销额"]);
+      document.getElementById("daily-table").innerHTML = tableHtml(dailyHeaders, DATA.table.map(row => {
+        const qty = selectedProducts().reduce((sum,p) => sum + row.items[p.id].qty, 0);
+        const sales = selectedProducts().reduce((sum,p) => sum + row.items[p.id].sales, 0);
+        return [row.date].concat(selectedProducts().flatMap(p => [fmtInt.format(row.items[p.id].qty), "\u00a5" + fmtMoney.format(row.items[p.id].sales)])).concat([fmtInt.format(qty), "\u00a5" + fmtMoney.format(sales)]);
+      }));
     }
-    document.querySelectorAll("input[name=summary-month]").forEach(input => input.addEventListener("change", renderSummaryTable));
-    renderSummaryTable();
-
-    const dailyHeaders = ["日期"].concat(products.flatMap(p => [p.short + "销量", p.short + "销额"])).concat(["合计销量", "合计销额"]);
-    document.getElementById("daily-table").innerHTML = tableHtml(
-      dailyHeaders,
-      DATA.table.map(row => [row.date].concat(products.flatMap(p => [fmtInt.format(row.items[p.id].qty), "¥" + fmtMoney.format(row.items[p.id].sales)])).concat([fmtInt.format(row.totalQty), "¥" + fmtMoney.format(row.totalSales)]))
-    );
+    function renderAll() { renderKpis(); renderCharts(); renderTables(); }
+    document.querySelectorAll("input[name=summary-month]").forEach(input => input.addEventListener("change", renderTables));
+    renderFilter();
+    renderMetricToggle();
+    renderAll();
 
     window.addEventListener("resize", () => {
-      [qtyChart, salesChart, priceChart, weeklyQtyChart, weeklySalesChart, weeklyPriceChart, weeklyPsdChart, weeklyStoresChart, elasticityChart, tierChart].forEach(chart => chart.resize());
+      Object.values(charts).forEach(chart => chart.resize());
     });
   </script>
 </body>
