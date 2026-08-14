@@ -18,6 +18,7 @@ try {
   if ($status) {
     git commit -m "Add Yonghui promotion dashboard" | Out-Host
     git push origin main | Out-Host
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "Published updated dashboards to GitHub Pages."
   } else {
     Write-Host "Dashboards already up to date; nothing to publish."

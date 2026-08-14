@@ -562,7 +562,7 @@ __NAV__
 
     <div class="section-title">一、每日销量、销额、单价走势</div>
     <section class="grid">
-      <article class="panel wide"><div class="panel-head"><h2>横向对比：已标记 vs 未标记</h2><span>仅巴旦木玉米片；按“推广促销=是”标记</span></div><div id="chart-promo-compare" class="chart short"></div></article>
+      <article class="panel wide"><div class="panel-head"><h2>每日销售数量</h2><span>按商品名称分别汇总</span></div><div id="chart-qty" class="chart"></div></article>
       <article class="panel half"><div class="panel-head"><h2>最近完整周销额结构</h2><span id="last-week"></span></div><div id="chart-mix" class="chart"></div></article>
       <article class="panel wide"><div class="panel-head"><h2>每日最终销额</h2><span>销售金额 + 优惠券金额</span></div><div id="chart-sales" class="chart"></div></article>
       <article class="panel half"><div class="panel-head"><h2>每日成交单价</h2><span>最终销额 / 销售数量</span></div><div id="chart-price" class="chart"></div></article>
@@ -577,7 +577,7 @@ __NAV__
         <div id="chart-tier" class="chart short"></div>
       </article>
       <article class="panel half"><div class="panel-head"><h2>月内日均动销门店</h2><span>每日去重门店求和 / 当月日期数</span></div><div class="table-wrap"><table id="month-table"></table></div></article>
-      <article class="panel wide"><div class="panel-head"><h2>推广门店横向对比</h2><span>7/21-8/1 推广门店 vs 其他门店</span></div><div id="chart-promo-compare" class="chart short"></div></article>
+      <article class="panel wide"><div class="panel-head"><h2>横向对比：已标记 vs 未标记</h2><span>仅巴旦木玉米片；按“推广促销=是”标记</span></div><div id="chart-promo-compare" class="chart short"></div></article>
       <article class="panel half"><div class="panel-head"><h2>推广期核心差异</h2><span>同日期数量与 PSD</span></div><div class="table-wrap"><table id="promo-table"></table></div></article>
       <article class="panel wide"><div class="panel-head"><h2>推广门店纵向同星期对比</h2><span>推广日 vs 非推广同星期均值</span></div><div id="chart-vertical" class="chart short"></div></article>
       <article class="panel half"><div class="panel-head"><h2>推广门店基线分层</h2><span>按非推广同星期单店日均分层</span></div><div id="chart-promo-tier" class="chart short"></div></article>
