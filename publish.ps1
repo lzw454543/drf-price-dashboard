@@ -6,6 +6,13 @@ Copy-Item -LiteralPath (Join-Path $DashboardDir "index.html") -Destination (Join
 Copy-Item -LiteralPath (Join-Path $DashboardDir "echarts.min.js") -Destination (Join-Path $RepoDir "echarts.min.js") -Force
 Copy-Item -LiteralPath (Join-Path $DashboardDir "大润发价格测试看板-离线版.html") -Destination (Join-Path $RepoDir "offline.html") -Force
 
+# Normalize shared page title so link previews and browser tabs are consistent
+$IndexPath = Join-Path $RepoDir "index.html"
+$html = [System.IO.File]::ReadAllText($IndexPath, [System.Text.Encoding]::UTF8)
+$html = $html -replace "<title>.*?</title>", "<title>大单品相关测试看板</title>"
+$html = $html -replace "<h1>.*?</h1>", "<h1>大单品相关测试看板</h1>"
+[System.IO.File]::WriteAllText($IndexPath, $html, (New-Object System.Text.UTF8Encoding($false)))
+
 python (Join-Path $RepoDir "build_yonghui_dashboard.py")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -19,7 +26,7 @@ try {
   git add index.html yonghui.html xinshiji.html offline.html yonghui-offline.html xinshiji-offline.html echarts.min.js build_yonghui_dashboard.py build_xinshiji_dashboard.py README.md .nojekyll publish.ps1
   $status = git status --porcelain
   if ($status) {
-    git commit -m "Fix dashboard publish script" | Out-Host
+    git commit -m "Update dashboards with latest data" | Out-Host
     git push origin main | Out-Host
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "Published updated dashboards to GitHub Pages."
