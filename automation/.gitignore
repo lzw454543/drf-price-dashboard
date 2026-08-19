@@ -1,0 +1,6 @@
+__pycache__/
+edge-profile/
+edge-cdp-profile/
+storage_state.json
+*.png
+*.pyc
