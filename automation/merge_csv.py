@@ -175,8 +175,8 @@ def print_summary(new_df: pd.DataFrame | None = None) -> None:
         source = source[source["日期"].notna()].copy()
 
     if new_df is None:
-        dates = [pd.Timestamp("2026-08-17"), pd.Timestamp("2026-08-18"), pd.Timestamp("2026-08-19")]
-        source = source[source["日期"].isin(dates)]
+        latest_dates = sorted([d for d in source["日期"].dropna().unique()])[-7:]
+        source = source[source["日期"].isin(latest_dates)]
 
     summary = (
         source.groupby("日期")
