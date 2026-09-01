@@ -585,16 +585,16 @@ __NAV__
 
   <main>
     <section class="kpis">
-      <article class="kpi"><div class="kpi-label">112g 累计销量</div><div class="kpi-value" id="kpi-qty">--</div><div class="kpi-sub"><span id="kpi-stores"></span><span class="neutral">包</span></div></article>
-      <article class="kpi"><div class="kpi-label">112g 累计销额</div><div class="kpi-value" id="kpi-sales">--</div><div class="kpi-sub"><span id="kpi-price"></span><span class="neutral">最终成交</span></div></article>
-      <article class="kpi"><div class="kpi-label">推广门店数</div><div class="kpi-value" id="kpi-promo-stores">--</div><div class="kpi-sub"><span id="kpi-promo-dates"></span><span class="neutral">货架促销</span></div></article>
-      <article class="kpi"><div class="kpi-label">推广期门店 PSD 提升</div><div class="kpi-value" id="kpi-uplift">--</div><div class="kpi-sub"><span id="kpi-psd-base"></span><span id="kpi-psd-delta"></span></div></article>
+      <article class="kpi"><div class="kpi-label">黄油太妃112g 当月销量</div><div class="kpi-value" id="kpi-qty">--</div><div class="kpi-sub" id="kpi-qty-sub"></div></article>
+      <article class="kpi"><div class="kpi-label">黄油太妃112g 当月销额</div><div class="kpi-value" id="kpi-sales">--</div><div class="kpi-sub" id="kpi-sales-sub"></div></article>
+      <article class="kpi"><div class="kpi-label">整体累计当月销量</div><div class="kpi-value" id="kpi-total-qty">--</div><div class="kpi-sub" id="kpi-total-qty-sub"></div></article>
+      <article class="kpi"><div class="kpi-label">整体累计当月销额</div><div class="kpi-value" id="kpi-total-sales">--</div><div class="kpi-sub" id="kpi-total-sales-sub"></div></article>
     </section>
 
     <div class="section-title">一、每日销量、销额、单价走势</div>
     <section class="grid">
       <article class="panel wide"><div class="panel-head"><h2>每日销售数量</h2><span>按商品名称分别汇总</span></div><div id="chart-qty" class="chart"></div></article>
-      <article class="panel half"><div class="panel-head"><h2>最近完整周销额结构</h2><span id="last-week"></span></div><div id="chart-mix" class="chart"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>每日销售门店数</h2><span>单个日期去重门店</span></div><div id="chart-stores" class="chart"></div></article>
       <article class="panel wide"><div class="panel-head"><h2>每日最终销额</h2><span>销售金额 + 优惠券金额</span></div><div id="chart-sales" class="chart"></div></article>
       <article class="panel half"><div class="panel-head"><h2>每日成交单价</h2><span>最终销额 / 销售数量</span></div><div id="chart-price" class="chart"></div></article>
       <article class="panel full"><div class="panel-head"><h2>周度 PSD 走势</h2><span>完整自然周；当周销量 / 当周去重门店 / 7</span></div><div id="chart-psd" class="chart short"></div></article>
@@ -770,18 +770,55 @@ function promoTierOption() {
       document.getElementById('month-table').innerHTML = `<thead><tr><th>月份</th><th>SKU</th><th>日均动销门店</th><th>销量</th><th>销额</th></tr></thead><tbody>${monthRows.map(r=>`<tr><td>${r.month}</td><td>${r.product}</td><td>${fmtDec(r.activeStoresAvg)}</td><td>${fmtInt(r.qty)}</td><td>${fmtMoney(r.sales)}</td></tr>`).join('')}</tbody>`;
     }
 
+    function kpiPeriod() {
+      const last = DATA.dates[DATA.dates.length - 1];
+      const curId = last.slice(0, 7);
+      const curDays = parseInt(last.slice(8, 10), 10);
+      const [y, m] = curId.split('-').map(Number);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      const prevDate = new Date(y, m - 2, 1);
+      const prevId = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = `${y}年${m}月${curDays < daysInMonth ? `（1-${curDays}日）` : ''}`;
+      return { curId, prevId, curDays, monthLabel, partial: curDays < daysInMonth };
+    }
+    function sumDaily(productId, monthId, maxDay) {
+      const p = DATA.products[productId];
+      let qty = 0, sales = 0, seen = false;
+      DATA.dates.forEach((d, i) => {
+        if (d.slice(0, 7) !== monthId) return;
+        if (maxDay != null && parseInt(d.slice(8, 10), 10) > maxDay) return;
+        if (p.daily.qty[i] != null) { qty += p.daily.qty[i]; seen = true; }
+        if (p.daily.sales[i] != null) sales += p.daily.sales[i];
+      });
+      return seen ? { qty: Math.round(qty), sales } : null;
+    }
+    function totalPeriod(monthId, maxDay) {
+      const agg = { qty: 0, sales: 0, seen: false };
+      DATA.productOrder.forEach(id => {
+        const r = sumDaily(id, monthId, maxDay);
+        if (r) { agg.qty += r.qty; agg.sales += r.sales; agg.seen = true; }
+      });
+      return agg.seen ? agg : null;
+    }
+    function kpiSub(elId, monthLabel, unit, cur, prev, partial) {
+      const cmp = partial ? '环比同期 ' : '环比 ';
+      const delta = prev == null ? '<span class="neutral">环比 --</span>' : `<span class="neutral">${cmp}</span>${deltaHtml(cur, prev)}`;
+      document.getElementById(elId).innerHTML = `<span class="neutral">${monthLabel} · ${unit}</span><span>${delta}</span>`;
+    }
     function renderKpis() {
-      const butter = DATA.products.butter;
-      const s = DATA.promo.summary;
-      document.getElementById('kpi-qty').textContent = fmtInt(butter.qty);
-      document.getElementById('kpi-sales').textContent = fmtMoney(butter.sales);
-      document.getElementById('kpi-promo-stores').textContent = fmtInt(DATA.promo.promoStoreCount);
-      document.getElementById('kpi-uplift').textContent = pct(s.verticalUplift);
-      document.getElementById('kpi-stores').textContent = `动销门店 ${fmtInt(butter.stores)}`;
-      document.getElementById('kpi-price').textContent = `均价 ${fmtMoney2(butter.price)}`;
-      document.getElementById('kpi-promo-dates').textContent = `${DATA.promo.promoStart.slice(5)} 至 ${DATA.promo.promoEnd.slice(5)}`;
-      document.getElementById('kpi-psd-base').textContent = `基线 ${fmtDec(s.verticalBaselinePsd,3)}，推广期 ${fmtDec(s.verticalPromoPsd,3)}`;
-      document.getElementById('kpi-psd-delta').innerHTML = deltaHtml(s.promoPsdAssigned, s.baselinePsdAssigned);
+      const { curId, prevId, curDays, monthLabel, partial } = kpiPeriod();
+      const bCur = sumDaily('butter', curId, null) || { qty: 0, sales: 0 };
+      const bPrev = sumDaily('butter', prevId, curDays);
+      const tCur = totalPeriod(curId, null) || { qty: 0, sales: 0 };
+      const tPrev = totalPeriod(prevId, curDays);
+      document.getElementById('kpi-qty').textContent = fmtInt(bCur.qty);
+      document.getElementById('kpi-sales').textContent = fmtMoney(bCur.sales);
+      document.getElementById('kpi-total-qty').textContent = fmtInt(tCur.qty);
+      document.getElementById('kpi-total-sales').textContent = fmtMoney(tCur.sales);
+      kpiSub('kpi-qty-sub', monthLabel, '包', bCur.qty, bPrev ? bPrev.qty : null, partial);
+      kpiSub('kpi-sales-sub', monthLabel, '最终成交', bCur.sales, bPrev ? bPrev.sales : null, partial);
+      kpiSub('kpi-total-qty-sub', monthLabel, '4品合计 · 包', tCur.qty, tPrev ? tPrev.qty : null, partial);
+      kpiSub('kpi-total-sales-sub', monthLabel, '4品合计', tCur.sales, tPrev ? tPrev.sales : null, partial);
     }
 
     function render() {
@@ -790,7 +827,7 @@ function promoTierOption() {
       chart('chart-sales').setOption(lineOption('sales','销额(元)',true), true);
       chart('chart-price').setOption(lineOption('price','单价(元)',true), true);
       chart('chart-psd').setOption(psdOption(), true);
-      chart('chart-mix').setOption(rankedOption(DATA.latestMix, 'sales', true), true);
+      chart('chart-stores').setOption(lineOption('stores','门店数',false), true);
       chart('chart-tier').setOption(tierOption(), true);
       chart('chart-promo-compare').setOption(promoCompareOption(), true);
       chart('chart-vertical').setOption(verticalOption(), true);
@@ -801,7 +838,6 @@ function promoTierOption() {
     }
 
     document.getElementById('meta').textContent = `数据区间 ${DATA.meta.dataStart} 至 ${DATA.meta.dataEnd} | 最近完整周 ${DATA.meta.lastCompleteWeek} | 生成于 ${DATA.meta.generatedAt}`;
-    document.getElementById('last-week').textContent = `${DATA.lastWeek.start} 至 ${DATA.lastWeek.end}`;
     document.getElementById('footnote').textContent = `说明：${DATA.meta.missingDates.length ? DATA.meta.missingDates.slice(0,6).join('、') + ' 等日期' : '无日期'}源表无记录，不纳入周度 PSD；8月10日至8月16日因当前源表未满7天也已剔除。单价为最终销额除以销量，不等于标价。推广门店按日期变化：每个促销日只取当天在“永辉活动门店”清单标记“是”且当天有112g动销的门店计入PSD分母，标记但当日无动销的门店不计入。横向对比为推广门店与同日未标记门店的PSD对比；纵向对比为同一批推广门店在促销日与同星期非促销日的PSD对比。共 ${DATA.promo.promoStoreCount} 家门店参与过推广。`;
     renderMonthFilters();
     render();
