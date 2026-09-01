@@ -61,14 +61,11 @@ def is_isolated_edge(proc):
     return "edge-cdp-profile" in cmd
 
 def kill_isolated_edge():
-    import psutil
-    for p in psutil.process_iter(["name", "cmdline"]):
-        try:
-            if p.info["name"] and p.info["name"].lower().startswith("msedge") and p.info.get("cmdline"):
-                if any("edge-cdp-profile" in str(a) for a in p.info["cmdline"]):
-                    p.kill()
-        except Exception:
-            pass
+    ps_cmd = ("Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | "
+              "Where-Object { $_.CommandLine -like '*edge-cdp-profile*' } | "
+              "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }")
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd],
+                   capture_output=True, text=True, timeout=60)
     time.sleep(4)
 
 def start_edge():
