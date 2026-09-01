@@ -104,19 +104,30 @@ def main():
             n = items.count()
             if n == 0:
                 continue
-            for i in range(min(n, 8)):
-                name = items.nth(i).locator('.task-name').inner_text().strip()
-                txt = items.nth(i).inner_text().replace('\n', ' ')
-                if name == report:
-                    print(f'  [{attempt*5}s] {txt[:120]}', flush=True)
-                    if '100%' in txt:
+            for i in range(min(n, 10)):
+                item = items.nth(i)
+                try:
+                    name = item.locator('.task-name').inner_text().strip()
+                    txt = item.inner_text().replace('\n', ' ')
+                except Exception:
+                    continue
+                if name == report and '100%' in txt:
+                    print(f'  [{attempt*5}s] match[{i}] {txt[:100]}', flush=True)
+                    btn = item.locator('.task-download')
+                    try:
+                        if not btn.is_visible(timeout=3000):
+                            item.scroll_into_view_if_needed(timeout=5000)
+                            time.sleep(0.5)
                         with page.expect_download(timeout=30000) as dl_info:
-                            items.nth(i).locator('.task-download').click()
+                            btn.click(timeout=10000)
                         dl = dl_info.value
                         sp = os.path.join(DOWNLOAD_DIR, dl.suggested_filename)
                         dl.save_as(sp)
                         print(f'SAVED:{sp}|{os.path.getsize(sp)}', flush=True)
                         return
+                    except Exception as e:
+                        print(f'  item {i} click failed: {e}; trying next', flush=True)
+                        continue
         print('TIMEOUT waiting for report')
         sys.exit(4)
 
