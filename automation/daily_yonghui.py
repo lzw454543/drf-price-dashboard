@@ -129,6 +129,81 @@ def copy_default_cookies():
     cpdir(os.path.join("Default", "Session Storage"))
     log("cookies refreshed from default Edge profile")
 
+
+def start_github_proxy(port=18443, ip="140.82.112.4"):
+    """Start a local CONNECT proxy mapping github.com to a reachable IP."""
+    import socket
+    import threading
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", port))
+    srv.listen(50)
+    override = {"github.com": ip, "api.github.com": ip}
+
+    def pipe(a, b):
+        try:
+            while True:
+                d = a.recv(65536)
+                if not d:
+                    break
+                b.sendall(d)
+        except Exception:
+            pass
+        finally:
+            for x in (a, b):
+                try:
+                    x.shutdown(socket.SHUT_RD)
+                except Exception:
+                    pass
+
+    def handle(client):
+        up = None
+        try:
+            client.settimeout(15)
+            req = b""
+            while b"\r\n\r\n" not in req:
+                chunk = client.recv(4096)
+                if not chunk:
+                    break
+                req += chunk
+            parts = req.split(b"\r\n", 1)[0].decode("latin1").split()
+            if not parts or parts[0].upper() != "CONNECT":
+                client.sendall(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+                return
+            host, prt = parts[1].rsplit(":", 1)
+            up = socket.create_connection((override.get(host, host), int(prt)), timeout=15)
+            client.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+            client.settimeout(None)
+            up.settimeout(None)
+            t1 = threading.Thread(target=pipe, args=(client, up), daemon=True)
+            t2 = threading.Thread(target=pipe, args=(up, client), daemon=True)
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+        except Exception as e:
+            log(f"proxy conn error: {e}")
+        finally:
+            for s in (client, up):
+                if s:
+                    try:
+                        s.close()
+                    except Exception:
+                        pass
+
+    def loop():
+        while True:
+            try:
+                c, _ = srv.accept()
+                threading.Thread(target=handle, args=(c,), daemon=True).start()
+            except Exception:
+                break
+
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+    return f"http://127.0.0.1:{port}"
+
+
 def main():
     target = datetime.date.today() - datetime.timedelta(days=1)
     dstr = target.strftime("%Y-%m-%d")
@@ -183,15 +258,28 @@ def main():
     last_err = None
     if "yonghui.html" in status or "yonghui-offline.html" in status:
         run(["git", "commit", "-m", f"Update Yonghui dashboard through {dstr}"], cwd=REPO)
+        pushed = False
         for attempt in range(4):
             rc, push_out = run(["git", "push", "origin", "main"], cwd=REPO, timeout=180, check=False)
             if rc == 0:
                 log("push OK")
+                pushed = True
                 break
             last_err = push_out
-            log(f"push failed (attempt {attempt+1}); retrying in 30s")
-            time.sleep(30)
-        else:
+            log(f"direct push failed (attempt {attempt+1}): {str(push_out)[-200:]}")
+            if attempt == 1:
+                log("starting local GitHub proxy fallback")
+                proxy = start_github_proxy()
+                rc2, push_out2 = run(["git", "-c", f"http.proxy={proxy}", "-c", f"https.proxy={proxy}",
+                                       "push", "origin", "main"], cwd=REPO, timeout=240, check=False)
+                if rc2 == 0:
+                    log("push OK via proxy")
+                    pushed = True
+                    break
+                last_err = push_out2
+                log(f"proxy push failed: {str(push_out2)[-200:]}")
+            time.sleep(20)
+        if not pushed:
             raise RuntimeError(f"git push failed: {last_err}")
     else:
         log("no dashboard changes to commit")
