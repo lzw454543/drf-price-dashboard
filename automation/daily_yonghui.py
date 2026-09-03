@@ -103,31 +103,148 @@ sys.exit(0 if "login" not in url.lower() else 1)
 def copy_default_cookies():
     default = os.path.join(os.environ["LOCALAPPDATA"], "Microsoft", "Edge", "User Data")
     isolated = os.path.join(HERE, "edge-cdp-profile")
-    def cp(rel):
-        s, d = os.path.join(default, rel), os.path.join(isolated, rel)
-        if os.path.exists(s):
-            os.makedirs(os.path.dirname(d), exist_ok=True)
+    staging = {"dir": None}
+
+    def stage_via_vss():
+        if staging["dir"]:
+            return staging["dir"]
+        stg = os.path.join(HERE, "cookie-staging")
+        done, err = os.path.join(stg, "_STAGE_DONE.txt"), os.path.join(stg, "_STAGE_ERROR.txt")
+        for m in (done, err):
+            try:
+                os.remove(m)
+            except OSError:
+                pass
+        rc, out = run(["schtasks", "/run", "/tn", "YonghuiStageCookies"], timeout=60, check=False)
+        if rc != 0:
+            raise RuntimeError(f"failed to start YonghuiStageCookies task: {out.strip()}")
+        for _ in range(36):
+            time.sleep(5)
+            if os.path.exists(done):
+                log("VSS staging done: " + open(done, encoding="utf-8", errors="replace").read().strip())
+                staging["dir"] = stg
+                return stg
+            if os.path.exists(err):
+                raise RuntimeError("elevated cookie staging failed: " + open(err, encoding="utf-8", errors="replace").read().strip())
+        raise RuntimeError("timed out waiting for YonghuiStageCookies staging task")
+
+    def readable(path):
+        try:
+            with open(path, "rb"):
+                return True
+        except OSError:
+            return False
+
+    def resolve(rel, is_dir=False):
+        s = os.path.join(default, rel)
+        if is_dir:
+            if not os.path.isdir(s):
+                return None
+            locked = False
+            for root, _dirs, files in os.walk(s):
+                for n in files:
+                    if n == "LOCK":
+                        continue
+                    if not readable(os.path.join(root, n)):
+                        locked = True
+                        break
+                if locked:
+                    break
+        else:
+            if not os.path.exists(s):
+                return None
+            locked = not readable(s)
+        if locked:
+            log(f"default Edge profile file locked ({rel}); using elevated VSS staging")
+            stg = stage_via_vss()
+            s2 = os.path.join(stg, rel)
+            return s2 if (os.path.isdir(s2) if is_dir else os.path.exists(s2)) else None
+        return s
+
+    def cp(rel, critical=False):
+        s = resolve(rel)
+        if not s:
+            return
+        d = os.path.join(isolated, rel)
+        os.makedirs(os.path.dirname(d), exist_ok=True)
+        try:
             shutil.copy2(s, d)
+        except OSError as e:
+            if critical:
+                raise
+            log(f"  cookie copy skip {rel}: {e}")
+
     def cpdir(rel):
-        s, d = os.path.join(default, rel), os.path.join(isolated, rel)
-        if os.path.isdir(s):
-            os.makedirs(d, exist_ok=True)
-            for name in os.listdir(s):
-                sp, dp = os.path.join(s, name), os.path.join(d, name)
-                try:
-                    if os.path.isdir(sp):
-                        shutil.copytree(sp, dp, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(sp, dp)
-                except Exception as e:
-                    log(f"  cookie copy skip {name}: {e}")
-    cp(os.path.join("Local State"))
-    cp(os.path.join("Default", "Network", "Cookies"))
+        s = resolve(rel, is_dir=True)
+        if not s:
+            return
+        d = os.path.join(isolated, rel)
+        if os.path.isdir(d):
+            shutil.rmtree(d, ignore_errors=True)
+        os.makedirs(d, exist_ok=True)
+        for name in os.listdir(s):
+            sp, dp = os.path.join(s, name), os.path.join(d, name)
+            try:
+                if os.path.isdir(sp):
+                    shutil.copytree(sp, dp, dirs_exist_ok=True, ignore=shutil.ignore_patterns("LOCK"))
+                else:
+                    shutil.copy2(sp, dp)
+            except Exception as e:
+                log(f"  cookie copy skip {name}: {e}")
+        lock = os.path.join(d, "LOCK")
+        if os.path.exists(lock):
+            try:
+                os.remove(lock)
+            except OSError:
+                pass
+
+    cp(os.path.join("Local State"), critical=True)
+    cp(os.path.join("Default", "Network", "Cookies"), critical=True)
+    cp(os.path.join("Default", "Network", "Cookies-journal"))
     cp(os.path.join("Default", "Login Data"))
     cp(os.path.join("Default", "Preferences"))
     cpdir(os.path.join("Default", "Local Storage"))
     cpdir(os.path.join("Default", "Session Storage"))
     log("cookies refreshed from default Edge profile")
+
+def close_isolated_edge():
+    """Graceful CDP close so Chromium flushes cookies; hard kill as fallback."""
+    code = r'''
+from playwright.sync_api import sync_playwright
+try:
+    with sync_playwright() as p:
+        b = p.chromium.connect_over_cdp("http://127.0.0.1:9223")
+        b.close()
+except Exception:
+    pass
+'''
+    run([sys.executable, "-c", code], timeout=60, check=False)
+    time.sleep(3)
+    kill_isolated_edge()
+
+def notify_login_needed():
+    """Leave the isolated Edge window open at the login page and alert the user.
+    Yonghui auth is an in-memory session cookie: it cannot be copied from disk,
+    so a one-time manual login in the automation Edge window is required."""
+    flag = os.path.join(LOGDIR, "LOGIN_NEEDED.txt")
+    msg = ("永辉销售看板自动化无法登录。\n\n"
+           "请在自动打开的 Edge 自动化窗口里完成永辉供零易商登录，\n"
+           "登录成功后无需其他操作，次日 10:30 的任务将自动恢复。\n\n"
+           f"时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    try:
+        with open(flag, "w", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except OSError:
+        pass
+    ps = (
+        "Add-Type -AssemblyName PresentationFramework; "
+        f"[System.Windows.MessageBox]::Show('{msg.replace(chr(10), ' ')}', "
+        "'永辉自动化需要重新登录', 'OK', 'Warning') | Out-Null"
+    )
+    try:
+        subprocess.Popen(["powershell", "-NoProfile", "-Command", ps])
+    except Exception:
+        pass
 
 
 def start_github_proxy(port=18443, ip="140.82.112.4"):
@@ -222,15 +339,16 @@ def main():
 
     ok, out = check_login()
     if not ok:
-        log("session expired; attempting cookie refresh from default Edge profile")
-        kill_isolated_edge()
-        copy_default_cookies()
-        if not start_edge():
-            raise RuntimeError("CDP failed to restart after cookie refresh")
-        ok, out = check_login()
-        if not ok:
-            raise RuntimeError("LOGIN_REQUIRED: isolated Edge session expired and default profile has no valid session either; manual login needed")
+        log("LOGIN_REQUIRED: isolated Edge session is gone (yonghui auth is memory-only, cannot be copied from disk)")
+        notify_login_needed()
+        raise RuntimeError("LOGIN_REQUIRED: please log in manually in the automation Edge window (left open at the login page)")
     log("login OK")
+    flag = os.path.join(LOGDIR, "LOGIN_NEEDED.txt")
+    if os.path.exists(flag):
+        try:
+            os.remove(flag)
+        except OSError:
+            pass
 
     # 2. Download
     log("downloading store detail ...")
@@ -284,9 +402,9 @@ def main():
     else:
         log("no dashboard changes to commit")
 
-    # 6. Close isolated browser to flush cookies
-    kill_isolated_edge()
-    log(f"=== daily update for {dstr} DONE ===")
+    # 6. Keep the isolated browser running: Yonghui auth is an in-memory
+    # session cookie, so closing the browser would force a manual re-login.
+    log(f"=== daily update for {dstr} DONE (isolated Edge kept alive) ===")
 
 if __name__ == "__main__":
     try:

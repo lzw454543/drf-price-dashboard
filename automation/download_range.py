@@ -70,8 +70,10 @@ def main():
         start = inputs.nth(0)
         end = inputs.nth(1)
         print(f'before: {start.input_value()} ~ {end.input_value()}', flush=True)
-        set_date(start, d1)
+        # Set end first: moving start beyond the current end gets rejected
+        # by the range picker (start must never exceed end).
         set_date(end, d2)
+        set_date(start, d1)
         page.mouse.click(700, 400)
         time.sleep(1.5)
         print(f'set: {start.input_value()} ~ {end.input_value()}', flush=True)
