@@ -341,7 +341,15 @@ def main():
     if not ok:
         log("LOGIN_REQUIRED: isolated Edge session is gone (yonghui auth is memory-only, cannot be copied from disk)")
         notify_login_needed()
-        raise RuntimeError("LOGIN_REQUIRED: please log in manually in the automation Edge window (left open at the login page)")
+        log("waiting up to 2 hours for a manual login in the automation Edge window ...")
+        for attempt in range(24):
+            time.sleep(300)
+            ok, out = check_login()
+            if ok:
+                log(f"login restored after ~{(attempt + 1) * 5} minutes; continuing")
+                break
+        if not ok:
+            raise RuntimeError("LOGIN_REQUIRED: please log in manually in the automation Edge window (left open at the login page)")
     log("login OK")
     flag = os.path.join(LOGDIR, "LOGIN_NEEDED.txt")
     if os.path.exists(flag):
