@@ -13,6 +13,7 @@ import glob
 import shutil
 import datetime
 import urllib.request
+import glob
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -20,6 +21,32 @@ DOWNLOADS = os.path.join(HERE, "downloads")
 LOGDIR = os.path.join(HERE, "logs")
 os.makedirs(LOGDIR, exist_ok=True)
 os.makedirs(DOWNLOADS, exist_ok=True)
+
+def resolve_git():
+    """Find git.exe: scheduled task PATH often lacks interactive tool locations."""
+    env_git = os.environ.get("YH_GIT")
+    if env_git and os.path.exists(env_git):
+        return env_git
+    found = shutil.which("git")
+    if found:
+        return found
+    patterns = [
+        os.path.join(os.environ.get("USERPROFILE", ""), ".cache", "codex-runtimes",
+                     "codex-primary-runtime", "dependencies", "native", "git", "cmd", "git.exe"),
+        r"C:\Program Files\Git\cmd\git.exe",
+        r"C:\Program Files (x86)\Git\cmd\git.exe",
+    ]
+    for pat in patterns:
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[0]
+    for hit in glob.glob(os.path.join(os.environ.get("USERPROFILE", ""), ".cache",
+                                      "codex-runtimes", "*", "dependencies", "native",
+                                      "git", "cmd", "git.exe")):
+        return hit
+    return "git"
+
+GIT = resolve_git()
 
 LOGPATH = os.path.join(LOGDIR, "yonghui-daily-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + ".log")
 
@@ -90,15 +117,27 @@ with sync_playwright() as p:
     if page is None:
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
     page.bring_to_front()
-    page.goto("https://glzx.yonghui.cn/glzs/CommoditySales", wait_until="domcontentloaded")
-    page.wait_for_timeout(7000)
-    url = page.url
-    print("FINAL_URL:" + url)
+    try:
+        page.goto("https://glzx.yonghui.cn/glzs/CommoditySales", wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_timeout(7000)
+        url = page.url
+        print("FINAL_URL:" + url)
+    except Exception as e:
+        print("NAV_ERROR:" + str(e)[:300])
+        b.close()
+        sys.exit(2)
     b.close()
 sys.exit(0 if "login" not in url.lower() else 1)
 '''
-    rc, out = run([sys.executable, "-c", code], timeout=90, check=False)
-    return rc == 0, out
+    for attempt in range(3):
+        rc, out = run([sys.executable, "-c", code], timeout=120, check=False)
+        if rc == 0:
+            return "ok", out
+        if rc == 1:
+            return "login", out
+        log(f"login check transient error (attempt {attempt+1}/3), retrying in 60s: {out.strip()[-200:]}")
+        time.sleep(60)
+    return "network", out
 
 def copy_default_cookies():
     default = os.path.join(os.environ["LOCALAPPDATA"], "Microsoft", "Edge", "User Data")
@@ -337,18 +376,24 @@ def main():
     else:
         log("CDP already running")
 
-    ok, out = check_login()
-    if not ok:
+    state, out = check_login()
+    if state == "network":
+        raise RuntimeError("NETWORK_ERROR: cannot reach yonghui portal (internet/proxy down); login state unknown, will retry next run")
+    if state != "ok":
         log("LOGIN_REQUIRED: isolated Edge session is gone (yonghui auth is memory-only, cannot be copied from disk)")
         notify_login_needed()
         log("waiting up to 2 hours for a manual login in the automation Edge window ...")
+        restored = False
         for attempt in range(24):
             time.sleep(300)
-            ok, out = check_login()
-            if ok:
+            state, out = check_login()
+            if state == "ok":
                 log(f"login restored after ~{(attempt + 1) * 5} minutes; continuing")
+                restored = True
                 break
-        if not ok:
+            if state == "network":
+                log("network still unavailable while waiting; continuing to wait")
+        if not restored:
             raise RuntimeError("LOGIN_REQUIRED: please log in manually in the automation Edge window (left open at the login page)")
     log("login OK")
     flag = os.path.join(LOGDIR, "LOGIN_NEEDED.txt")
@@ -379,14 +424,14 @@ def main():
 
     # 5. Publish
     log("publishing to GitHub ...")
-    run(["git", "add", "yonghui.html", "yonghui-offline.html"], cwd=REPO)
-    _, status = run(["git", "status", "--porcelain", "yonghui.html", "yonghui-offline.html"], cwd=REPO, check=False)
+    run([GIT, "add", "yonghui.html", "yonghui-offline.html"], cwd=REPO)
+    _, status = run([GIT, "status", "--porcelain", "yonghui.html", "yonghui-offline.html"], cwd=REPO, check=False)
     last_err = None
     if "yonghui.html" in status or "yonghui-offline.html" in status:
-        run(["git", "commit", "-m", f"Update Yonghui dashboard through {dstr}"], cwd=REPO)
+        run([GIT, "commit", "-m", f"Update Yonghui dashboard through {dstr}"], cwd=REPO)
         pushed = False
         for attempt in range(4):
-            rc, push_out = run(["git", "push", "origin", "main"], cwd=REPO, timeout=180, check=False)
+            rc, push_out = run([GIT, "push", "origin", "main"], cwd=REPO, timeout=180, check=False)
             if rc == 0:
                 log("push OK")
                 pushed = True
@@ -396,7 +441,7 @@ def main():
             if attempt == 1:
                 log("starting local GitHub proxy fallback")
                 proxy = start_github_proxy()
-                rc2, push_out2 = run(["git", "-c", f"http.proxy={proxy}", "-c", f"https.proxy={proxy}",
+                rc2, push_out2 = run([GIT, "-c", f"http.proxy={proxy}", "-c", f"https.proxy={proxy}",
                                        "push", "origin", "main"], cwd=REPO, timeout=240, check=False)
                 if rc2 == 0:
                     log("push OK via proxy")
