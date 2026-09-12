@@ -471,6 +471,7 @@ HTML_TEMPLATE = r'''<!doctype html>
     .full { grid-column:span 12; }
     .chart { width:100%; height:340px; }
     .chart.short { height:310px; }
+    .chart.linkage { height:400px; }
     .sku-filter { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 14px; }
     .sku-filter-label { color:var(--muted); font-size:12px; font-weight:700; margin-right:2px; }
     .sku-filter label { display:inline-flex; align-items:center; gap:5px; padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; background:#fff; color:#374151; font-size:12px; font-weight:700; cursor:pointer; }
@@ -525,12 +526,19 @@ __NAV__
       <article class="panel wide"><div class="panel-head"><h2>每日销量走势</h2><span>7/27 起，按 SKU 汇总</span></div><div id="chart-qty" class="chart"></div></article>
       <article class="panel narrow"><div class="panel-head"><h2>每日销额走势</h2><span>销售收入合计</span></div><div id="chart-sales" class="chart"></div></article>
       <article class="panel full"><div class="panel-head"><h2>每日单价走势</h2><span>每日销售收入 / 销售数量</span></div><div id="chart-price" class="chart"></div></article>
+      <article class="panel full">
+        <div class="panel-head">
+          <h2>每日销量与单价联动分析</h2>
+          <div class="sku-filter linkage-filter" id="linkage-filter" style="margin:0;"></div>
+        </div>
+        <div id="chart-linkage" class="chart linkage"></div>
+      </article>
     </section>
 
-    <div class="section-title">完整周长期走势（4月-8月）</div>
+    <div class="section-title">完整周长期走势（4月-9月）</div>
     <section class="grid">
       <article class="panel full"><div class="panel-head"><h2>完整周销量走势</h2><span>仅完整自然周，跨月周已合并</span></div><div id="chart-weekly-qty" class="chart"></div></article>
-      <article class="panel half"><div class="panel-head"><h2>完整周销额走势</h2><span>4月-8月完整周</span></div><div id="chart-weekly-sales" class="chart"></div></article>
+      <article class="panel half"><div class="panel-head"><h2>完整周销额走势</h2><span>4月-9月完整周</span></div><div id="chart-weekly-sales" class="chart"></div></article>
       <article class="panel half"><div class="panel-head"><h2>完整周单价走势</h2><span>周销额 / 周销量</span></div><div id="chart-weekly-price" class="chart"></div></article>
       <article class="panel half"><div class="panel-head"><h2>完整周 PSD 走势</h2><span>周销量 / 周去重门店 / 7</span></div><div id="chart-weekly-psd" class="chart"></div></article>
       <article class="panel half"><div class="panel-head"><h2>完整周动销门店</h2><span>每周去重仓位数</span></div><div id="chart-weekly-stores" class="chart"></div></article>
@@ -692,11 +700,67 @@ HTML_TEMPLATE += r'''
       return "<thead><tr>" + headers.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" +
         rows.map(row => "<tr>" + row.map(cell => "<td>" + (cell === null || cell === undefined || cell === "" ? "--" : cell) + "</td>").join("") + "</tr>").join("") + "</tbody>";
     }
+    let linkageProductIds = products.map(p => p.id);
+    function linkageProducts() { return products.filter(p => linkageProductIds.includes(p.id)); }
+    function renderLinkageFilter() {
+      const wrap = document.getElementById("linkage-filter");
+      wrap.innerHTML = products.map(p => `<label class="${linkageProductIds.includes(p.id) ? "active" : ""}"><input type="checkbox" value="${p.id}" ${linkageProductIds.includes(p.id) ? "checked" : ""}>${p.short}</label>`).join("");
+      wrap.querySelectorAll("input").forEach(input => input.addEventListener("change", () => {
+        const next = Array.from(wrap.querySelectorAll("input:checked")).map(x => x.value);
+        if (next.length) linkageProductIds = next;
+        else { input.checked = true; linkageProductIds = [input.value]; }
+        renderLinkageFilter();
+        renderLinkageChart();
+      }));
+    }
+    function renderLinkageChart() {
+      const lp = linkageProducts();
+      const qtyTotal = dates.map((_, index) => lp.reduce((sum, p) => sum + (DATA.daily[p.id].qty[index] || 0), 0));
+      const series = [{
+        name: "所选商品销量合计", type: "bar", yAxisIndex: 0, data: qtyTotal,
+        barMaxWidth: 22, itemStyle: { color: "#cbd5e1", borderRadius: [3,3,0,0] }, z: 1
+      }].concat(lp.map(p => ({
+        name: p.short + "单价", type: "line", yAxisIndex: 1, data: DATA.daily[p.id].price,
+        smooth: false, symbolSize: 6, lineStyle: { width: 2.5 }, itemStyle: { color: p.color },
+        connectNulls: false, z: 3, emphasis: { focus: "series" }
+      })));
+      getChart("chart-linkage").setOption({
+        color: ["#cbd5e1"].concat(lp.map(p => p.color)),
+        textStyle: chartFont,
+        legend: { top: 8, icon: "roundRect", itemWidth: 10, itemHeight: 10, textStyle: { color: "#4b5563" } },
+        tooltip: {
+          trigger: "axis", confine: true, axisPointer: { type: "cross", crossStyle: { color: "#94a3b8" } },
+          formatter: function(params) {
+            let html = "<div style='font-weight:700;margin-bottom:2px;'>" + params[0].axisValueLabel + "</div>";
+            params.forEach(x => {
+              const v = x.value;
+              const isPrice = x.seriesName.indexOf("单价") >= 0;
+              const txt = (v === null || v === undefined) ? "--" : (isPrice ? Number(v).toFixed(2) + " 元" : fmtInt.format(v) + " 包");
+              html += x.marker + x.seriesName + "：" + txt + "<br/>";
+            });
+            return html;
+          }
+        },
+        grid: { left: 48, right: 56, top: 58, bottom: 66, containLabel: true },
+        xAxis: Object.assign({ type: "category", data: dates }, axisStyle()),
+        yAxis: [
+          Object.assign({ type: "value", name: "销量(包)", nameGap: 18 }, axisStyle()),
+          Object.assign({ type: "value", name: "单价(元/包)", nameGap: 18, scale: true, splitLine: { show: false }, axisLabel: { color: "#6b7280", formatter: v => Number(v).toFixed(1) }, axisLine: { lineStyle: { color: "#d1d5db" } }, axisTick: { show: false } })
+        ],
+        dataZoom: [
+          { type: "inside" },
+          { type: "slider", height: 18, bottom: 14, borderColor: "#e5e7eb", fillerColor: "rgba(17,24,39,.08)", handleStyle: { color: "#94a3b8" }, textStyle: { color: "#6b7280" }, labelFormatter: v => dates[v] || "" }
+        ],
+        series: series
+      }, true);
+    }
     function renderAll() { renderKpis(); renderCharts(); renderTables(); }
     document.querySelectorAll("input[name=summary-month]").forEach(input => input.addEventListener("change", renderTables));
     renderFilter();
     renderMetricToggle();
+    renderLinkageFilter();
     renderAll();
+    renderLinkageChart();
 
     window.addEventListener("resize", () => {
       Object.values(charts).forEach(chart => chart.resize());
