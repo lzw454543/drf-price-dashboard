@@ -63,22 +63,27 @@ function Publish-ViaGitHubApi {
   Write-Host "Published updated dashboards to GitHub Pages via API commit $($commit.sha)."
 }
 
-Copy-Item -LiteralPath (Join-Path $DashboardDir "index.html") -Destination (Join-Path $RepoDir "huadong.html") -Force
+Copy-Item -LiteralPath (Join-Path $DashboardDir "index.html") -Destination (Join-Path $RepoDir "index.html") -Force
 Copy-Item -LiteralPath (Join-Path $DashboardDir "echarts.min.js") -Destination (Join-Path $RepoDir "echarts.min.js") -Force
-Copy-Item -LiteralPath (Join-Path $DashboardDir "大润发价格测试看板-离线版.html") -Destination (Join-Path $RepoDir "huadong-offline.html") -Force
+Copy-Item -LiteralPath (Join-Path $DashboardDir "大润发价格测试看板-离线版.html") -Destination (Join-Path $RepoDir "offline.html") -Force
 
-# Normalize the East China page title using Unicode code points so Windows PowerShell 5.1 cannot misread the script encoding.
-$HuadongPath = Join-Path $RepoDir "huadong.html"
-$HuadongTitle = -join @(
-  [char]0x534e, [char]0x4e1c, [char]0x5927, [char]0x6da6, [char]0x53d1,
+# Keep the North China dashboard title explicit even when the source workbook builder uses a generic title.
+$NorthTitle = -join @(
+  [char]0x534e, [char]0x5317, [char]0x5927, [char]0x6da6, [char]0x53d1,
   " 70g ",
   [char]0x7389, [char]0x7c73, [char]0x7247, [char]0x4ef7, [char]0x683c,
   [char]0x6d4b, [char]0x8bd5, [char]0x770b, [char]0x677f
 )
-$html = [System.IO.File]::ReadAllText($HuadongPath, [System.Text.Encoding]::UTF8)
-$html = [regex]::Replace($html, "<title>.*?</title>", "<title>$HuadongTitle</title>", [Text.RegularExpressions.RegexOptions]::Singleline)
-$html = [regex]::Replace($html, "<h1>.*?</h1>", "<h1>$HuadongTitle</h1>", [Text.RegularExpressions.RegexOptions]::Singleline)
-[System.IO.File]::WriteAllText($HuadongPath, $html, (New-Object System.Text.UTF8Encoding($false)))
+foreach ($northFile in @("index.html", "offline.html")) {
+  $northPath = Join-Path $RepoDir $northFile
+  $northHtml = [System.IO.File]::ReadAllText($northPath, [System.Text.Encoding]::UTF8)
+  $northHtml = [regex]::Replace($northHtml, "<title>.*?</title>", "<title>$NorthTitle</title>", [Text.RegularExpressions.RegexOptions]::Singleline)
+  $northHtml = [regex]::Replace($northHtml, "<h1>.*?</h1>", "<h1>$NorthTitle</h1>", [Text.RegularExpressions.RegexOptions]::Singleline)
+  [System.IO.File]::WriteAllText($northPath, $northHtml, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+python (Join-Path $RepoDir "build_huadong_dashboard.py")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 python (Join-Path $RepoDir "build_yonghui_dashboard.py")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -90,7 +95,7 @@ Push-Location $RepoDir
 try {
   & $Git config user.name "Codex DRF Dashboard"
   & $Git config user.email "codex-drf@example.local"
-  & $Git add index.html huadong.html yonghui.html xinshiji.html offline.html huadong-offline.html yonghui-offline.html xinshiji-offline.html echarts.min.js build_yonghui_dashboard.py build_xinshiji_dashboard.py README.md .nojekyll publish.ps1
+  & $Git add index.html huadong.html yonghui.html xinshiji.html offline.html huadong-offline.html yonghui-offline.html xinshiji-offline.html echarts.min.js build_huadong_dashboard.py build_yonghui_dashboard.py build_xinshiji_dashboard.py README.md .nojekyll publish.ps1
   $status = & $Git status --porcelain
   if ($status) {
     & $Git commit -m "Update dashboards with latest data" | Out-Host
