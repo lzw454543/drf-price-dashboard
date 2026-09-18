@@ -491,7 +491,7 @@ def nav_block(active: str) -> str:
   </style>
   <nav class="dashboard-nav">
     <span class="brand">大单品相关测试看板</span>
-    <a class="{drf_class}" href="index.html">大润发 70g 价格测试</a>
+    <a class="{drf_class}" href="index.html">华东大润发</a>
     <a class="{yh_class}" href="yonghui.html">永辉 112g 促销分析</a>
     <a class="{xj_class}" href="xinshiji.html">新世纪 70g 价格弹性</a>
   </nav>
