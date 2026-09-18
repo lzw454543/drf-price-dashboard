@@ -26,7 +26,8 @@ PRODUCTS = [
 ]
 TIER_ORDER = ["0-1", "1-2", "2-5", "5+"]
 NAV_ITEMS = [
-    ("index.html", "华东大润发", "drf"),
+    ("index.html", "华北大润发", "drf"),
+    ("huadong.html", "华东大润发", "huadong"),
     ("yonghui.html", "永辉 112g 促销分析", "yonghui"),
     ("xinshiji.html", "新世纪 70g 价格弹性", "xinshiji"),
 ]

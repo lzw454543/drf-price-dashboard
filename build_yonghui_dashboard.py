@@ -471,6 +471,7 @@ def build_data() -> dict:
 
 def nav_block(active: str) -> str:
     drf_class = "active" if active == "drf" else ""
+    hd_class = "active" if active == "huadong" else ""
     yh_class = "active" if active == "yonghui" else ""
     xj_class = "active" if active == "xinshiji" else ""
     return f'''<!-- dashboard-nav:start -->
@@ -491,7 +492,8 @@ def nav_block(active: str) -> str:
   </style>
   <nav class="dashboard-nav">
     <span class="brand">大单品相关测试看板</span>
-    <a class="{drf_class}" href="index.html">华东大润发</a>
+    <a class="{drf_class}" href="index.html">华北大润发</a>
+    <a class="{hd_class}" href="huadong.html">华东大润发</a>
     <a class="{yh_class}" href="yonghui.html">永辉 112g 促销分析</a>
     <a class="{xj_class}" href="xinshiji.html">新世纪 70g 价格弹性</a>
   </nav>
